@@ -1,6 +1,6 @@
 import ev3_dc as ev3
 
-EV3_MAC = '00:16:53:43:7F:21'
+EV3_MAC = '00:16:53:46:be:aa'
 
 # Map your instrument commands to physical ports
 INSTRUMENT_PORTS = {
