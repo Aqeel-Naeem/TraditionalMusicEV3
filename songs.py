@@ -1,4 +1,5 @@
 import time
+import threading
 
 SONGS = {
     "Rasa Sayang": [
@@ -26,17 +27,40 @@ def list_songs():
     return list(SONGS.keys())
 
 
+def _group_notes_by_beat(song_notes):
+    """Groups notes that share the same beat, so they can fire together."""
+    groups = {}
+    for note in song_notes:
+        groups.setdefault(note["beat"], []).append(note)
+    return sorted(groups.items())  # list of (beat, [notes]) sorted by beat
+
+
 def play_song(ev3, song_notes, tempo=1.0):
     """
-    Plays a song by sending timed commands to the EV3.
-    tempo: multiplier for speed (1.0 = normal, 0.5 = half speed, etc.)
+    Plays a song across (potentially multiple) EV3 bricks.
+    Notes sharing the same beat are fired simultaneously via separate
+    threads, so multi-brick timing stays tight instead of drifting
+    due to per-brick Bluetooth latency.
     """
+    grouped = _group_notes_by_beat(song_notes)
     last_beat = 0.0
 
-    for note in song_notes:
-        wait = (note["beat"] - last_beat) * tempo
+    for beat, notes in grouped:
+        wait = (beat - last_beat) * tempo
         if wait > 0:
             time.sleep(wait)
 
-        ev3.send_command(note["instrument"])
-        last_beat = note["beat"]
+        threads = []
+        for note in notes:
+            t = threading.Thread(
+                target=ev3.send_command,
+                kwargs={"command": note["instrument"], "duration": note["duration"]},
+                daemon=True,
+            )
+            threads.append(t)
+            t.start()
+
+        # Don't block waiting for threads to finish - let them fire and move on,
+        # so the next beat's timing isn't delayed by slow Bluetooth responses.
+
+        last_beat = beat
