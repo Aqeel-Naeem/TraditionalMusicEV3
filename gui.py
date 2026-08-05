@@ -2,6 +2,7 @@ import customtkinter as ctk
 from ev3 import EV3
 import threading
 from songs import get_song, play_song
+from config import INSTRUMENTS
 
 class EV3App(ctk.CTk):
 
@@ -10,9 +11,9 @@ class EV3App(ctk.CTk):
 
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
-        self.geometry("900x600")
-
+        self.geometry("900x700")
         self.create_widgets()
+        self.refresh_instrument_status()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -33,9 +34,11 @@ class EV3App(ctk.CTk):
             print(f"Connection error: {e}")
 
     def disconnect_ev3(self):
+        self.disconnect_button.configure(state="disabled")
         self.ev3.disconnect()
         self.status_label.configure(text="EV3 Status: Disconnected", text_color="#ef4444")
         self.connect_button.configure(text="Connect EV3", state="normal")
+        self.disconnect_button.configure(state="normal")
 
     def play_gong(self):
         self.ev3.send_command("GONG")
@@ -67,6 +70,11 @@ class EV3App(ctk.CTk):
         )
         title.pack(pady=20)
 
+        #Instrument status
+        status_grid_frame = ctk.CTkFrame(self)
+        status_grid_frame.pack(padx=20, pady=10, fill="x")
+        self.create_status_grid(status_grid_frame)
+
         # EV3 Section
         ev3_frame = ctk.CTkFrame(self)
         ev3_frame.pack(padx=20, pady=10, fill="x")
@@ -91,6 +99,11 @@ class EV3App(ctk.CTk):
             command=self.disconnect_ev3
         )
         self.disconnect_button.pack(pady=10)
+
+        battery_button = ctk.CTkButton(
+            ev3_frame, text="Check Battery", command=self.check_battery
+        )
+        battery_button.pack(pady=10)
 
         # Song Section
         song_frame = ctk.CTkFrame(self)
@@ -144,3 +157,40 @@ class EV3App(ctk.CTk):
             ai_frame, text="Voice Recognition"
         )
         voice_button.pack(pady=10)
+
+    def create_status_grid(self, parent_frame):
+        self.instrument_status_labels = {}
+
+        parent_frame.grid_columnconfigure(tuple(range(len(INSTRUMENTS))), weight=1)
+
+        for i, instrument in enumerate(INSTRUMENTS.keys()):
+            label = ctk.CTkLabel(
+                parent_frame,
+                text=f"{instrument}: Unknown",
+                text_color="#888888",
+                anchor="center"
+            )
+            label.grid(row=0, column=i, padx=10, pady=10, sticky="ew")
+            self.instrument_status_labels[instrument] = label
+
+    def refresh_instrument_status(self):
+        for instrument, label in self.instrument_status_labels.items():
+            if self.ev3.connected and self.ev3.is_instrument_connected(instrument):
+                label.configure(text=f"{instrument}: Connected", text_color="#22c55e")
+            else:
+                label.configure(text=f"{instrument}: Disconnected", text_color="#ef4444")
+
+        self.after(2000, self.refresh_instrument_status)
+
+    def check_battery(self):
+        if not self.ev3.connected:
+            print("Not connected - can't check battery")
+            return
+
+        threading.Thread(target=self._check_battery_worker, daemon=True).start()
+
+    def _check_battery_worker(self):
+        levels = self.ev3.get_battery_levels()
+        for mac, percentage in levels.items():
+            text = f"{percentage}%" if percentage is not None else "Unknown"
+            print(f"Battery {mac}: {text}")

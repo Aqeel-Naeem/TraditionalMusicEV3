@@ -1,3 +1,4 @@
+import time
 import threading
 import ev3_dc as ev3
 from config import INSTRUMENTS
@@ -46,7 +47,7 @@ class EV3:
 
         # Step 2: create Motor object(s) for each instrument, using shared brick connections
         for instrument, locations in INSTRUMENTS.items():
-            motors = []
+            motors = []  # list of (motor, mac) tuples, so failures can be traced to a brick
             all_ok = True
 
             for loc in locations:
@@ -60,7 +61,7 @@ class EV3:
                 try:
                     brick = self._bricks[mac]
                     motor = ev3.Motor(PORT_MAP[loc["port"]], ev3_obj=brick)
-                    motors.append(motor)
+                    motors.append((motor, mac))
                 except Exception as e:
                     all_ok = False
                     print(f"  {instrument}: FAILED to set up motor on {mac} port {loc['port']} - {e}")
@@ -90,6 +91,8 @@ class EV3:
             except Exception as e:
                 print(f"  Brick {mac}: error while disconnecting - {e}")
 
+        time.sleep(2)  # give the bricks' Bluetooth stack time to fully release
+
         self._bricks = {}
         self._brick_status = {}
         self._motors = {}
@@ -113,7 +116,7 @@ class EV3:
             print(f"Cannot send '{command}': not connected")
             return False
 
-        motors = self._motors[command]
+        motors = self._motors[command]  # list of (motor, mac) tuples
 
         if key is not None:
             if key < 0 or key >= len(motors):
@@ -123,16 +126,43 @@ class EV3:
         else:
             target_motors = motors
 
+        def _run_motor(motor, mac):
+            try:
+                motor.start_move_for(duration=duration, speed=speed)
+            except Exception as e:
+                # A motor command failing mid-performance usually means that
+                # brick's connection dropped - mark BOTH the specific brick
+                # and this instrument as down, so status checks (and battery
+                # checks, which skip down bricks) reflect it correctly.
+                print(f"  {command}: motor command failed on brick {mac} - {e}")
+                self._brick_status[mac] = False
+                self._status[command] = False
+
         threads = []
-        for motor in target_motors:
-            t = threading.Thread(
-                target=motor.start_move_for,
-                kwargs={"duration": duration, "speed": speed},
-                daemon=True,
-            )
+        for motor, mac in target_motors:
+            t = threading.Thread(target=_run_motor, args=(motor, mac), daemon=True)
             threads.append(t)
             t.start()
 
         label = f"{command}[{key}]" if key is not None else command
         print(f"Sent command: {label} ({len(target_motors)} motor(s))")
         return True
+
+    def get_battery_levels(self):
+        """
+        Returns a dict of {mac: percentage} for each currently connected brick.
+        Bricks already known to be down are skipped (marked None) instead of
+        being queried, since querying a dead connection can hang.
+        """
+        levels = {}
+        for mac, brick in self._bricks.items():
+            if not self._brick_status.get(mac, False):
+                levels[mac] = None
+                continue
+            try:
+                levels[mac] = brick.battery.percentage
+            except Exception as e:
+                print(f"  Could not read battery for {mac}: {e}")
+                levels[mac] = None
+                self._brick_status[mac] = False
+        return levels
