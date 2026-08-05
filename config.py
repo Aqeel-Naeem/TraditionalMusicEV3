@@ -6,7 +6,8 @@
 INSTRUMENTS = {
     "GONG":  {"mac": "00:16:53:46:be:aa", "port": "A"},
     "SARON": {"mac": "00:16:53:41:95:2e", "port": "A"},
-    "DRUM":  {"mac": "00:16:53:43:d6:4a", "port": "C"},
+    "SARON": {"mac": "00:16:53:41:95:2e", "port": "C"},
+    "DRUM":  {"mac": "00:16:53:43:d6:4a", "port": "A"},
     # Add more instruments here as needed, e.g.:
     # "KENONG": {"mac": "00:16:53:XX:XX:XX", "port": "B"},
 }
