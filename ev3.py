@@ -1,3 +1,4 @@
+import threading
 import ev3_dc as ev3
 from config import INSTRUMENTS
 
@@ -13,22 +14,24 @@ class EV3:
     """
     Manages connections to multiple EV3 bricks. Instruments that share
     the same MAC address (same physical brick, different port) reuse a
-    single Bluetooth connection instead of opening a new one each time.
+    single Bluetooth connection. An instrument can also have MULTIPLE
+    motors (e.g. SARON on Port A and Port C of the same brick), which
+    fire together whenever that instrument is triggered.
     """
 
     def __init__(self):
         self.connected = False
-        self._bricks = {}    # mac -> ev3.EV3 connection object (one per unique brick)
+        self._bricks = {}        # mac -> ev3.EV3 connection object (one per unique brick)
         self._brick_status = {}  # mac -> True/False (connected or not)
-        self._motors = {}    # instrument name -> ev3.Motor object
-        self._status = {}    # instrument name -> True/False (usable or not)
+        self._motors = {}        # instrument name -> list of ev3.Motor objects
+        self._status = {}        # instrument name -> True/False (fully usable or not)
 
     def connect(self):
         print("Connecting to EV3 bricks...")
         any_success = False
 
         # Step 1: connect to each unique brick MAC only once
-        unique_macs = {info["mac"] for info in INSTRUMENTS.values()}
+        unique_macs = {loc["mac"] for locations in INSTRUMENTS.values() for loc in locations}
 
         for mac in unique_macs:
             try:
@@ -41,24 +44,35 @@ class EV3:
                 self._brick_status[mac] = False
                 print(f"  Brick {mac}: FAILED to connect - {e}")
 
-        # Step 2: create a Motor object per instrument, using the shared brick connection
-        for instrument, info in INSTRUMENTS.items():
-            mac = info["mac"]
+        # Step 2: create Motor object(s) for each instrument, using shared brick connections
+        for instrument, locations in INSTRUMENTS.items():
+            motors = []
+            all_ok = True
 
-            if not self._brick_status.get(mac, False):
-                self._status[instrument] = False
-                print(f"  {instrument}: unavailable (brick {mac} not connected)")
-                continue
+            for loc in locations:
+                mac = loc["mac"]
 
-            try:
-                brick = self._bricks[mac]
-                motor = ev3.Motor(PORT_MAP[info["port"]], ev3_obj=brick)
-                self._motors[instrument] = motor
-                self._status[instrument] = True
-                print(f"  {instrument}: ready (brick {mac}, port {info['port']})")
-            except Exception as e:
-                self._status[instrument] = False
-                print(f"  {instrument}: FAILED to set up motor - {e}")
+                if not self._brick_status.get(mac, False):
+                    all_ok = False
+                    print(f"  {instrument}: motor on brick {mac} unavailable (brick not connected)")
+                    continue
+
+                try:
+                    brick = self._bricks[mac]
+                    motor = ev3.Motor(PORT_MAP[loc["port"]], ev3_obj=brick)
+                    motors.append(motor)
+                except Exception as e:
+                    all_ok = False
+                    print(f"  {instrument}: FAILED to set up motor on {mac} port {loc['port']} - {e}")
+
+            self._motors[instrument] = motors
+            self._status[instrument] = all_ok and len(motors) > 0
+
+            if self._status[instrument]:
+                port_list = ", ".join(f"{loc['mac']}:{loc['port']}" for loc in locations)
+                print(f"  {instrument}: ready ({len(motors)} motor(s) - {port_list})")
+            else:
+                print(f"  {instrument}: NOT fully ready ({len(motors)}/{len(locations)} motor(s) available)")
 
         self.connected = any_success
 
@@ -85,16 +99,40 @@ class EV3:
     def is_instrument_connected(self, instrument):
         return self._status.get(instrument, False)
 
-    def send_command(self, command, duration=0.3, speed=50):
+    def send_command(self, command, key=None, duration=0.3, speed=50):
         """
-        Sends a movement command to the motor for the given instrument.
-        Returns True if sent, False if that instrument isn't available.
+        Fires motor(s) for this instrument.
+        - If key is None: fires ALL motors for this instrument together
+          (good for simple instruments, or manual "hit everything" testing).
+        - If key is given (an index into that instrument's motor list):
+          fires ONLY that specific motor - use this for big instruments
+          where each motor covers a different key/section (e.g. SARON key 0, 1, 2...).
+        Returns True if sent, False if unavailable.
         """
         if not self._status.get(command, False):
             print(f"Cannot send '{command}': not connected")
             return False
 
-        motor = self._motors[command]
-        motor.start_move_for(duration=duration, speed=speed)
-        print(f"Sent command: {command}")
+        motors = self._motors[command]
+
+        if key is not None:
+            if key < 0 or key >= len(motors):
+                print(f"Cannot send '{command}': key {key} out of range (0-{len(motors) - 1})")
+                return False
+            target_motors = [motors[key]]
+        else:
+            target_motors = motors
+
+        threads = []
+        for motor in target_motors:
+            t = threading.Thread(
+                target=motor.start_move_for,
+                kwargs={"duration": duration, "speed": speed},
+                daemon=True,
+            )
+            threads.append(t)
+            t.start()
+
+        label = f"{command}[{key}]" if key is not None else command
+        print(f"Sent command: {label} ({len(target_motors)} motor(s))")
         return True

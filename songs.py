@@ -3,16 +3,18 @@ import threading
 
 SONGS = {
     "Rasa Sayang": [
-        {"instrument": "GONG",  "beat": 0.0, "duration": 0.5},
-        {"instrument": "SARON", "beat": 0.5, "duration": 0.25},
-        {"instrument": "SARON", "beat": 0.75, "duration": 0.25},
-        {"instrument": "DRUM",  "beat": 1.0, "duration": 0.5},
-        {"instrument": "SARON", "beat": 1.5, "duration": 0.25},
-        {"instrument": "SARON", "beat": 1.75, "duration": 0.25},
-        {"instrument": "GONG",  "beat": 2.0, "duration": 0.5},
-        {"instrument": "DRUM",  "beat": 2.5, "duration": 0.5},
-        {"instrument": "SARON", "beat": 3.0, "duration": 0.25},
-        {"instrument": "SARON", "beat": 3.25, "duration": 0.25},
+        # "key" refers to which motor ([min 1 motor | max 4 motor] - sequence: 0, 1, 2, 3) within that instrument's motor list to strike.
+        # Add "key" (or set to None) to activate ALL motors for that instrument together.
+        {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 0.5},
+        {"instrument": "SARON", "key": 0,    "beat": 0.5,  "duration": 0.25},
+        {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25},
+        {"instrument": "DRUM",  "key": None, "beat": 1.0,  "duration": 0.5},
+        {"instrument": "SARON", "key": 0,    "beat": 1.5,  "duration": 0.25},
+        {"instrument": "SARON", "key": 1,    "beat": 1.75, "duration": 0.25},
+        {"instrument": "GONG",  "key": None, "beat": 2.0,  "duration": 0.5},
+        {"instrument": "DRUM",  "key": None, "beat": 2.5,  "duration": 0.5},
+        {"instrument": "SARON", "key": 0,    "beat": 3.0,  "duration": 0.25},
+        {"instrument": "SARON", "key": 1,    "beat": 3.25, "duration": 0.25},
     ],
 }
 
@@ -37,9 +39,9 @@ def _group_notes_by_beat(song_notes):
 
 def play_song(ev3, song_notes, tempo=1.0):
     """
-    Plays a song across (potentially multiple) EV3 bricks.
-    Notes sharing the same beat are fired simultaneously via separate
-    threads, so multi-brick timing stays tight instead of drifting
+    Plays a song across (potentially multiple) EV3 bricks and motors.
+    Notes sharing the same beat fire simultaneously via separate threads,
+    so multi-brick/multi-motor timing stays tight instead of drifting
     due to per-brick Bluetooth latency.
     """
     grouped = _group_notes_by_beat(song_notes)
@@ -54,7 +56,11 @@ def play_song(ev3, song_notes, tempo=1.0):
         for note in notes:
             t = threading.Thread(
                 target=ev3.send_command,
-                kwargs={"command": note["instrument"], "duration": note["duration"]},
+                kwargs={
+                    "command": note["instrument"],
+                    "key": note.get("key"),
+                    "duration": note["duration"],
+                },
                 daemon=True,
             )
             threads.append(t)
