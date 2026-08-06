@@ -14,6 +14,9 @@ class EV3App(ctk.CTk):
         self.geometry("900x700")
         self.create_widgets()
         self.refresh_instrument_status()
+        self.background_health_check()
+        self._health_check_running = False
+        self.song_playing = False
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -55,11 +58,12 @@ class EV3App(ctk.CTk):
             print(f"Song not found: {song_name}")
             return
 
-        threading.Thread(
-            target=play_song,
-            args=(self.ev3, song_notes),
-            daemon=True
-        ).start()
+        def _play_wrapper():
+            self.song_playing = True
+            play_song(self.ev3, song_notes)
+            self.song_playing = False
+
+        threading.Thread(target=_play_wrapper, daemon=True).start()
 
     def create_widgets(self):
         # Main title
@@ -201,3 +205,14 @@ class EV3App(ctk.CTk):
         for mac, percentage in levels.items():
             text = f"{percentage}%" if percentage is not None else "Unknown"
             print(f"Battery {mac}: {text}")
+
+    def background_health_check(self):
+        if self.ev3.connected and not self.song_playing and not self._health_check_running:
+            self._health_check_running = True
+            threading.Thread(target=self._health_check_worker, daemon=True).start()
+
+        self.after(5000, self.background_health_check)  # checks every 5 seconds
+
+    def _health_check_worker(self):
+        self.ev3.health_check()
+        self._health_check_running = False

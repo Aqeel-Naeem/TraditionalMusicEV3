@@ -1,4 +1,3 @@
-import time
 import threading
 import ev3_dc as ev3
 from config import INSTRUMENTS
@@ -24,8 +23,9 @@ class EV3:
         self.connected = False
         self._bricks = {}        # mac -> ev3.EV3 connection object (one per unique brick)
         self._brick_status = {}  # mac -> True/False (connected or not)
-        self._motors = {}        # instrument name -> list of ev3.Motor objects
+        self._motors = {}        # instrument name -> list of (motor, mac) tuples
         self._status = {}        # instrument name -> True/False (fully usable or not)
+        self._instruments_by_mac = {}  # mac -> list of instrument names that use it
 
     def connect(self):
         print("Connecting to EV3 bricks...")
@@ -46,12 +46,17 @@ class EV3:
                 print(f"  Brick {mac}: FAILED to connect - {e}")
 
         # Step 2: create Motor object(s) for each instrument, using shared brick connections
+        self._instruments_by_mac = {}
+
         for instrument, locations in INSTRUMENTS.items():
             motors = []  # list of (motor, mac) tuples, so failures can be traced to a brick
             all_ok = True
 
             for loc in locations:
                 mac = loc["mac"]
+                self._instruments_by_mac.setdefault(mac, [])
+                if instrument not in self._instruments_by_mac[mac]:
+                    self._instruments_by_mac[mac].append(instrument)
 
                 if not self._brick_status.get(mac, False):
                     all_ok = False
@@ -90,8 +95,6 @@ class EV3:
                 print(f"  Brick {mac}: disconnected")
             except Exception as e:
                 print(f"  Brick {mac}: error while disconnecting - {e}")
-
-        time.sleep(2)  # give the bricks' Bluetooth stack time to fully release
 
         self._bricks = {}
         self._brick_status = {}
@@ -166,3 +169,29 @@ class EV3:
                 levels[mac] = None
                 self._brick_status[mac] = False
         return levels
+
+    def health_check(self):
+        """
+        Actively checks every brick that's CURRENTLY marked as connected,
+        even if nothing has tried to send it a command recently. This is
+        what catches a brick that has silently gone offline while idle
+        (e.g. before it's ever been triggered) - without this, the status
+        grid would keep showing it as "Connected" until something finally
+        tried to use it and failed.
+
+        Should be called periodically in the background (see gui.py),
+        NOT while a song is actively playing, since it sends its own
+        Bluetooth traffic and could interfere with timing-sensitive
+        motor commands.
+        """
+        for mac, brick in self._bricks.items():
+            if not self._brick_status.get(mac, False):
+                continue  # already known to be down, no need to re-check
+
+            try:
+                _ = brick.battery  # lightweight query, just to confirm the brick still responds
+            except Exception as e:
+                print(f"  Health check: brick {mac} is no longer responding - {e}")
+                self._brick_status[mac] = False
+                for instrument in self._instruments_by_mac.get(mac, []):
+                    self._status[instrument] = False
