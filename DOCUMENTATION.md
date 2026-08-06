@@ -192,6 +192,7 @@ basically the same moment instead.
 | `send_command(command, key=None, ...)` | Tells an instrument to play. `key=None` moves all of that instrument's motors together; `key=0`, `key=1`, etc. moves just one specific motor. |
 | `is_instrument_connected(instrument)` | Answers yes/no: is this specific instrument currently working? Used to color the status grid green/red. |
 | `get_battery_levels()` | Checks the battery percentage of every connected brick. |
+| `health_check()` | Actively checks every brick that's supposed to be connected, even if nothing has tried to use it recently. Catches a brick that quietly stopped working while sitting idle. See Section 8 for details. |
 
 ---
 
@@ -305,12 +306,100 @@ new column count.)
 
 ---
 
-## 8. Known limitations (things not fully finished yet)
+## 8. Detecting a brick that silently disconnects
 
-- If a brick quietly stops working and nothing tries to send it a command,
-  the app won't notice until something actually tries to use it. There's
-  no automatic "check if everything's still connected" happening in the
-  background yet.
+### The problem this solves
+
+Originally, the app only found out a brick had disconnected in one way:
+by trying to actually send it a command and having that fail. If a brick
+died while just sitting idle (nothing currently trying to use it), the
+status grid would keep wrongly showing it as "Connected" until someone
+happened to click a button that used it - which, during a real
+performance, could be the worst possible moment to find out.
+
+### How `health_check()` fixes this
+
+Every few seconds, the app automatically sends a small, harmless request
+(checking the battery level) to every brick it currently believes is
+connected - a "are you still actually there?" check. If a brick doesn't
+respond, it's immediately marked as disconnected (and so is every
+instrument that depends on it), so the status grid turns red within
+seconds, without anyone needing to click anything.
+
+### Why it pauses while a song is playing
+
+Sending this extra check at the same time as real movement commands could
+add a small delay to the song's precise timing. So the health check is
+skipped entirely while a song is actively playing, and resumes once
+playback finishes.
+
+### Why checks can't be scheduled too close together
+
+Checking every brick takes a small but real amount of time (each one is
+checked one at a time, not all instantly). If the background check were
+scheduled to repeat faster than a full round actually takes, multiple
+checks could start overlapping and pile up, sending duplicate Bluetooth
+traffic to the same bricks at once - risking the same kind of connection
+instability this feature is trying to prevent. To guard against this, a
+simple flag (`self._health_check_running` in `gui.py`) makes sure a new
+check can never start while a previous one is still in progress,
+regardless of how short the repeat interval is set to.
+
+---
+
+## 9. Why port verification (checking what's actually plugged into each port) was not added
+
+### What we tried
+
+The idea was to compare what `config.py` *expects* to be plugged into
+each port against what the brick *actually* reports - catching mistakes
+like a typo in a port letter, or a motor that's come unplugged, before
+it causes a silent failure during a performance.
+
+`ev3_dc` provides a property called `sensors_as_dict` that reports what's
+plugged into every port. In testing, this worked correctly *once* - right
+after first connecting - matching physical reality exactly.
+
+### Why it doesn't work as a live/ongoing check
+
+Through direct testing, we confirmed that `sensors_as_dict` only reflects
+what was plugged in **at the moment the connection was first made** - it
+does not update again afterward, no matter how many times it's re-checked
+on that same connection. Physically unplugging a motor and checking again
+(without reconnecting) still showed the old, outdated result.
+
+A second test confirmed that a **brand new connection** to the same brick
+*does* correctly detect the change - meaning the brick only re-scans its
+ports once, at connection time, not continuously.
+
+### Why we didn't work around this by reconnecting periodically
+
+Making this "live" would require disconnecting and fully reconnecting
+every brick on a repeating timer, just to force a fresh port scan. Given
+what was learned earlier in the project - that EV3 bricks need a cooldown
+period between disconnecting and reconnecting, and that repeated
+reconnect attempts caused real connection instability - doing this
+automatically and repeatedly in the background was judged too risky. It
+could end up *causing* the exact kind of dropped connections this feature
+was meant to catch.
+
+### Where this leaves things
+
+Port verification was removed from the project entirely for now, rather
+than being kept as a limited "connect-time only" tool, to keep the
+codebase focused on what's actually being used. The `health_check()`
+method (Section 8) remains the way the app detects a brick that's stopped
+responding - it just can't identify *which specific port* failed, only
+that the whole brick did.
+
+---
+
+## 10. Known limitations (things not fully finished yet)
+
+- Port mismatches (e.g. a typo in `config.py`, or a motor plugged into
+  the wrong port) are only caught when a command is actually sent to that
+  port and does nothing - there's currently no diagnostic tool for this
+  (see Section 9 for why).
 - Voice recognition (`ai/voice.py`) needs an internet connection to work,
   and hasn't been fully connected to the current multi-brick setup yet.
 - Gesture recognition (`ai/gesture.py`) is designed assuming a right hand;
