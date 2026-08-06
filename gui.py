@@ -123,6 +123,13 @@ class EV3App(ctk.CTk):
         )
         song_button.pack(pady=10)
 
+        song_button = ctk.CTkButton(
+            song_frame,
+            text="Test Motors",
+            command=lambda: self.play_selected_song("Test Motors")
+        )
+        song_button.pack(pady=10)
+
         # Instrument Control Section
         instrument_frame = ctk.CTkFrame(self)
         instrument_frame.pack(padx=20, pady=10, fill="x")

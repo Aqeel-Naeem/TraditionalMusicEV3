@@ -16,6 +16,12 @@ SONGS = {
         {"instrument": "SARON", "key": 0,    "beat": 3.0,  "duration": 0.25},
         {"instrument": "SARON", "key": 1,    "beat": 3.25, "duration": 0.25},
     ],
+    "Test Motors": [
+            {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 1.0},
+            {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0},
+            {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0},
+            {"instrument": "DRUM",  "key": None, "beat": 3.0,  "duration": 1.0},
+        ],
 }
 
 
