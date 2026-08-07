@@ -3,8 +3,8 @@ import threading
 
 SONGS = {
     "Rasa Sayang": [
-        # "key" refers to which motor ([min 1 motor | max 4 motor] - sequence: 0, 1, 2, 3) within that instrument's motor list to strike.
-        # Add "key" (or set to None) to activate ALL motors for that instrument together.
+        # "key" refers to which motor within that instrument's motor list to strike.
+        # Omit "key" (or set to None) to fire ALL motors for that instrument together.
         {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 0.5},
         {"instrument": "SARON", "key": 0,    "beat": 0.5,  "duration": 0.25},
         {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25},
@@ -16,12 +16,13 @@ SONGS = {
         {"instrument": "SARON", "key": 0,    "beat": 3.0,  "duration": 0.25},
         {"instrument": "SARON", "key": 1,    "beat": 3.25, "duration": 0.25},
     ],
+
     "Test Motors": [
-            {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 1.0},
-            {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0},
-            {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0},
-            {"instrument": "DRUM",  "key": None, "beat": 3.0,  "duration": 1.0},
-        ],
+        {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 1.0},
+        {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0},
+        {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0},
+        {"instrument": "DRUM",  "key": None, "beat": 3.0,  "duration": 1.0},
+    ],
 }
 
 
@@ -43,17 +44,25 @@ def _group_notes_by_beat(song_notes):
     return sorted(groups.items())  # list of (beat, [notes]) sorted by beat
 
 
-def play_song(ev3, song_notes, tempo=1.0):
+def play_song(ev3, song_notes, tempo=1.0, stop_event=None):
     """
     Plays a song across (potentially multiple) EV3 bricks and motors.
     Notes sharing the same beat fire simultaneously via separate threads,
     so multi-brick/multi-motor timing stays tight instead of drifting
     due to per-brick Bluetooth latency.
+
+    stop_event: an optional threading.Event(). If it becomes set while
+    the song is playing, playback stops before the next beat fires
+    (used to let voice/gesture commands interrupt a song in progress).
     """
     grouped = _group_notes_by_beat(song_notes)
     last_beat = 0.0
 
     for beat, notes in grouped:
+        if stop_event is not None and stop_event.is_set():
+            print("Song stopped early.")
+            return
+
         wait = (beat - last_beat) * tempo
         if wait > 0:
             time.sleep(wait)
