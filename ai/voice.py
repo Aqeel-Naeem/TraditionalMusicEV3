@@ -1,12 +1,13 @@
 import threading
 import speech_recognition as sr
 
-WAKE_WORD = "hey ev3"
+WAKE_WORD = "hey robot"
+MIC_INDEX = 1  # confirmed working device: "Microphone Array (Intel Smart Sound)"
 
 
 class VoiceController:
     """
-    Listens continuously in the background for a wake word ("Hey EV3"),
+    Listens continuously in the background for a wake word ("Hey Robot"),
     then captures the next phrase as a command and passes it to a
     callback function (e.g. to trigger EV3 instrument/song commands).
     """
@@ -18,7 +19,7 @@ class VoiceController:
         """
         self.on_command = on_command
         self.recognizer = sr.Recognizer()
-        self.microphone = sr.Microphone()
+        self.microphone = sr.Microphone(device_index=MIC_INDEX)
         self._listening = False
         self._thread = None
 
@@ -32,7 +33,7 @@ class VoiceController:
         self._listening = True
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
-        print("Voice recognition started. Say 'Hey EV3' followed by a command.")
+        print("Voice recognition started. Say 'Hey Robot' followed by a command.")
 
     def stop(self):
         self._listening = False

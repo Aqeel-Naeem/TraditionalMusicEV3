@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from ev3 import EV3
 import threading
+import difflib
 from ai.voice import VoiceController
 from ai.gesture import GestureController
 from songs import get_song, play_song, list_songs
@@ -16,15 +17,12 @@ class EV3App(ctk.CTk):
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
         self.geometry("900x800")
-        self.create_widgets()
-        self.refresh_instrument_status()
-        self.background_health_check()
-        self._health_check_running = False
-        self.song_playing = False
 
         self.stop_event = threading.Event()
-        self.song_list = list_songs()  
+        self.song_list = list_songs()
         self.current_song_index = 0
+        self._health_check_running = False
+        self.song_playing = False
 
         self.voice = VoiceController(on_command=self.handle_voice_command)
         self.gesture = GestureController(
@@ -33,8 +31,10 @@ class EV3App(ctk.CTk):
             on_next=self.next_song,
             on_previous=self.previous_song,
         )
-        self.current_song_index = 0
 
+        self.create_widgets()  # <- this must come AFTER self.voice/self.gesture are created
+        self.refresh_instrument_status()
+        self.background_health_check()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -243,14 +243,32 @@ class EV3App(ctk.CTk):
         self._health_check_running = False
 
     def handle_voice_command(self, command):
-        if "gong" in command:
-            self.ev3.send_command("GONG")
-        elif "saron" in command:
-            self.ev3.send_command("SARON")
-        elif "drum" in command:
-            self.ev3.send_command("DRUM")
-        elif "rasa sayang" in command:
-            self.play_selected_song("Rasa Sayang")
+        # Build a list of everything the command could mean: instrument names + song names
+        known_targets = list(INSTRUMENTS.keys()) + self.song_list  # e.g. ["GONG", "SARON", "DRUM", "Rasa Sayang", "Test Motors"]
+
+        matches = difflib.get_close_matches(command, known_targets, n=1, cutoff=0.3)
+
+        if not matches:
+            # Try matching word-by-word too, in case the whole phrase doesn't match well
+            # but one word in it does (e.g. "play roses i am" -> "am" alone won't help,
+            # but this catches simpler cases like "gong" hidden inside a longer phrase)
+            for word in command.split():
+                word_matches = difflib.get_close_matches(word, known_targets, n=1, cutoff=0.5)
+                if word_matches:
+                    matches = word_matches
+                    break
+
+        if not matches:
+            print(f"Could not match voice command to anything known: '{command}'")
+            return
+
+        target = matches[0]
+        print(f"Matched '{command}' -> '{target}'")
+
+        if target in INSTRUMENTS:
+            self.ev3.send_command(target)
+        else:
+            self.play_selected_song(target)
 
     def handle_finger_count(self, count):
         mapping = {1: "GONG", 2: "SARON", 3: "DRUM"}

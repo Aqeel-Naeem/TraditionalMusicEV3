@@ -48,7 +48,15 @@ class GestureController:
         self._running = False
 
     def _run_loop(self):
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # DirectShow backend - more reliable on Windows than the default
+
+        if not cap.isOpened():
+            print("ERROR: Could not open webcam at all (index 0). Check that no other app is using it.")
+            self._running = False
+            return
+
+        failed_reads = 0
+
         hands = self.mp_hands.Hands(
             max_num_hands=1,
             min_detection_confidence=0.7,
@@ -58,7 +66,19 @@ class GestureController:
         while self._running:
             success, frame = cap.read()
             if not success:
+                failed_reads += 1
+                if failed_reads == 1:
+                    print("Webcam opened, but no frame could be read yet - retrying...")
+                if failed_reads == 30:
+                    print("ERROR: Still can't read frames after many attempts. "
+                          "Try closing other apps that might be using the webcam "
+                          "(e.g. Zoom, Teams, browser tabs with camera access).")
+                if failed_reads > 100:
+                    print("Giving up on webcam - too many failed reads.")
+                    break
                 continue
+
+            failed_reads = 0  # reset once a frame successfully comes through
 
             frame = cv2.flip(frame, 1)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
