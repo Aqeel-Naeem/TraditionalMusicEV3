@@ -18,7 +18,7 @@ class EV3App(ctk.CTk):
         self.title("Traditional Music EV3 Controller")
         self.geometry("900x800")
 
-        self.stop_event = threading.Event()
+        self.current_stop_event = None
         self.song_list = list_songs()
         self.current_song_index = 0
         self._health_check_running = False
@@ -26,10 +26,9 @@ class EV3App(ctk.CTk):
 
         self.voice = VoiceController(on_command=self.handle_voice_command)
         self.gesture = GestureController(
-            on_finger_count=self.handle_finger_count,
+            on_instrument_finger_count=self.handle_instrument_gesture,
+            on_song_finger_count=self.handle_song_gesture,
             on_stop=self.stop_song,
-            on_next=self.next_song,
-            on_previous=self.previous_song,
         )
 
         self.create_widgets()  # <- this must come AFTER self.voice/self.gesture are created
@@ -76,12 +75,26 @@ class EV3App(ctk.CTk):
             print(f"Song not found: {song_name}")
             return
 
-        self.stop_event.clear()  # reset in case a previous song was stopped
+        if self.song_playing and getattr(self, "currently_playing_song", None) == song_name:
+            print(f"'{song_name}' is already playing - ignoring duplicate request.")
+            return
+
+        # Stop whatever's currently playing (if anything), before starting the new one
+        if self.current_stop_event is not None:
+            self.current_stop_event.set()
+
+        my_stop_event = threading.Event()
+        self.current_stop_event = my_stop_event
 
         def _play_wrapper():
             self.song_playing = True
-            play_song(self.ev3, song_notes, stop_event=self.stop_event)
-            self.song_playing = False
+            self.currently_playing_song = song_name
+            play_song(self.ev3, song_notes, stop_event=my_stop_event)
+            # Only clear song_playing if THIS song is still the current one
+            # (avoids a race where an old thread's cleanup wipes out the new song's state)
+            if self.currently_playing_song == song_name:
+                self.song_playing = False
+                self.currently_playing_song = None
 
         threading.Thread(target=_play_wrapper, daemon=True).start()
 
@@ -270,23 +283,24 @@ class EV3App(ctk.CTk):
         else:
             self.play_selected_song(target)
 
-    def handle_finger_count(self, count):
-        mapping = {1: "GONG", 2: "SARON", 3: "DRUM"}
-        if count in mapping:
-            self.ev3.send_command(mapping[count])
+    def handle_instrument_gesture(self, count):
+        instrument_list = list(INSTRUMENTS.keys())  # reflects config.py automatically
+        index = count - 1
+        if 0 <= index < len(instrument_list):
+            instrument = instrument_list[index]
+            self.ev3.send_command(instrument)
+            print(f"Right hand {count} finger(s) -> {instrument}")
+
+    def handle_song_gesture(self, count):
+        index = count - 1
+        if 0 <= index < len(self.song_list):
+            song_name = self.song_list[index]
+            print(f"Left hand {count} finger(s) -> {song_name}")
+            self.play_selected_song(song_name)
+        else:
+            print(f"No song mapped to {count} finger(s) (only {len(self.song_list)} song(s) available)")
 
     def stop_song(self):
-        self.stop_event.set()
+        if self.current_stop_event is not None:
+            self.current_stop_event.set()
         print("Stop requested.")
-
-    def next_song(self):
-        self.current_song_index = (self.current_song_index + 1) % len(self.song_list)
-        name = self.song_list[self.current_song_index]
-        print(f"Next song: {name}")
-        self.play_selected_song(name)
-
-    def previous_song(self):
-        self.current_song_index = (self.current_song_index - 1) % len(self.song_list)
-        name = self.song_list[self.current_song_index]
-        print(f"Previous song: {name}")
-        self.play_selected_song(name)

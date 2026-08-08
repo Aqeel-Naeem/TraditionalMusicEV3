@@ -6,6 +6,25 @@ language. If you want setup/installation instructions instead, see
 
 ---
 
+## Table of Contents
+
+0. [Glossary](#0-glossary-words-used-in-this-document)
+1. [Project overview](#1-project-overview)
+2. [File structure](#2-file-structure)
+3. [`config.py` - which motor plays which instrument](#3-configpy---which-motor-plays-which-instrument)
+4. [`ev3.py` - the `EV3` class](#4-ev3py---the-ev3-class-talks-to-the-bricks)
+5. [`songs.py` - song data and playback](#5-songspy---song-data-and-playback-scheduling)
+6. [`gui.py` - the window and buttons](#6-guipy---the-window-and-buttons)
+7. [Why some choices were made](#7-why-some-choices-were-made-background-context)
+8. [Detecting a brick that silently disconnects](#8-detecting-a-brick-that-silently-disconnects)
+9. [Why port verification was not added](#9-why-port-verification-checking-whats-actually-plugged-into-each-port-was-not-added)
+10. [`ai/voice.py` - voice recognition](#10-aivoicepy---voice-recognition)
+11. [`ai/gesture.py` - gesture recognition](#11-aigesturepy---gesture-recognition)
+12. [Switching songs safely (stopping the previous one)](#12-switching-songs-safely-stopping-the-previous-one)
+13. [Known limitations](#13-known-limitations-things-not-fully-finished-yet)
+
+---
+
 ## 0. Glossary (words used in this document)
 
 - **Function / Method** - a named block of code that does one specific
@@ -70,8 +89,8 @@ TraditionalMusicEV3/
 ├── config.py     - a list of which motor plays which instrument
 ├── songs.py      - the songs themselves (which notes play, and when)
 ├── ai/
-│   ├── voice.py   - listens for voice commands (in progress)
-│   └── gesture.py - watches your webcam for hand gestures (in progress)
+│   ├── voice.py   - listens for voice commands (working, but not very reliable - see Section 10)
+│   └── gesture.py - watches your webcam for hand gestures (working)
 └── requirements.txt
 ```
 
@@ -394,13 +413,150 @@ that the whole brick did.
 
 ---
 
-## 10. Known limitations (things not fully finished yet)
+## 10. `ai/voice.py` - voice recognition
+
+### How it works
+
+The app listens continuously in the background for a **wake word**
+("Hey Robot"). Once it hears that, it treats whatever you say right after
+as a command (e.g. "play gong"), and passes that text to `gui.py` to
+figure out what to do with it.
+
+Voice recognition uses Google's free online speech-to-text service (via
+the `SpeechRecognition` library), which means **it needs an internet
+connection to work at all**.
+
+### Problems we ran into, and what we learned
+
+- **The original wake word was "Hey EV3."** This turned out to be a bad
+  choice - "EV3" isn't a normal English word, so Google's speech
+  recognizer kept mishearing it in different, inconsistent ways (e.g.
+  "evie 3," or garbling it into something unrelated). We changed the wake
+  word to **"Hey Robot"** instead - a common English word/phrase the
+  recognizer handles far more reliably.
+- **The wrong microphone was being used by default.** Windows lists many
+  duplicate entries for the same physical microphone (different driver
+  types), and letting the code just use "the default" sometimes picked a
+  low-quality or incorrectly-routed one. We fixed this by explicitly
+  specifying which microphone index to use (`MIC_INDEX` in `voice.py`),
+  found by testing with a small standalone script that lists all
+  available microphones and lets you try each one.
+- **Malay song names are still unreliable.** Even after fixing the wake
+  word and microphone, phrases like "Rasa Sayang" get badly mis-heard
+  (e.g. as "roses I am"), since Google's English speech model doesn't
+  know Malay words. We tried "fuzzy matching" (comparing the mis-heard
+  text against known song/instrument names to find the closest match
+  instead of requiring an exact match), but this on its own wasn't
+  reliable enough and sometimes matched to the wrong thing entirely.
+
+### Current status
+
+Voice recognition works technically, but is **not reliable enough to
+depend on for a real performance** given the above. It's left in the
+project as a working feature you can demonstrate, but gesture recognition
+(Section 11) turned out to be the more dependable AI input method, and is
+the one actually recommended for live use.
+
+---
+
+## 11. `ai/gesture.py` - gesture recognition
+
+### How it works
+
+Uses your webcam plus a library called MediaPipe, which can detect a
+hand and figure out the position of each knuckle/fingertip in real time.
+From those positions, the code works out: how many fingers are held up,
+and whether the hand is a closed fist.
+
+**Both hands are tracked at once**, and treated differently:
+- **Right hand**, finger count (1-5) -> directly selects and plays an
+  **instrument** (same idea as clicking an instrument button).
+- **Left hand**, finger count (1-5) -> directly selects and plays a
+  **song** (same idea as clicking a song button).
+- **Fist on either hand** -> stops whatever song is currently playing.
+
+### Why this replaced the original "next/previous song" design
+
+The first version used a thumbs-up/thumbs-down gesture to step through
+songs one at a time (like pressing "next" or "previous"). In testing,
+this felt confusing and easy to overshoot - you'd have to remember how
+many songs you'd stepped past. Switching to **direct selection** (a
+specific finger count always means a specific, particular song) is more
+predictable and matches how instrument selection already worked.
+
+### Why a gesture doesn't keep re-triggering while held
+
+Early on, holding a gesture steady (e.g. while a song played) would
+sometimes cause it to restart repeatedly, or fire many times in a row.
+This was fixed with two separate mechanisms:
+
+1. **Only fire on change.** The code remembers the last gesture that
+   actually triggered an action, separately for each hand. It only fires
+   again once the gesture changes to something different (or the hand
+   leaves the frame and a gesture is shown again afterward) - simply
+   holding the same gesture steady does nothing further.
+2. **Stability buffering.** Even a hand that isn't moving still produces
+   very slightly different readings from frame to frame (camera noise,
+   tiny natural hand tremor). This caused occasional flickering between
+   two different gesture readings, which looked like "spamming" commands.
+   The fix requires a gesture to be read the *same way* for several
+   consecutive frames in a row before it's accepted as real, filtering
+   out that natural jitter.
+
+### A bug worth knowing about: the thumb direction fix
+
+Whether a thumb counts as "extended" was originally determined by
+comparing its x-position to a knuckle further down the thumb - this
+works for a right hand, but is backwards for a left hand (the thumb
+splays toward the opposite side). This caused a real, closed left-hand
+fist to be misread as "1 finger extended." The fix compares thumb
+position in the opposite direction specifically for the left hand.
+
+### Why song-switching needed its own fix
+
+Originally, all songs shared a single "please stop" signal
+(`stop_event`). Starting a new song accidentally reset this shared signal,
+which meant the *previous* song never actually received the stop request
+- it just kept playing at the same time as the new one, sending
+conflicting commands to the same instruments. See Section 12 for the fix.
+
+---
+
+## 12. Switching songs safely (stopping the previous one)
+
+### The problem
+
+If you selected a new song (by gesture or button) while a different song
+was still playing, both would play *at the same time*, since nothing was
+actually telling the first one to stop.
+
+### The fix
+
+Each time a song starts, it gets its **own personal stop signal**
+(instead of every song sharing one). Before starting a new song, the app
+now explicitly tells whichever song is currently playing to stop first,
+using that specific song's own signal - so switching songs cleanly stops
+the old one before starting the new one, instead of them overlapping.
+
+This also means a fist (stop gesture) reliably stops *whatever* is
+currently playing, regardless of which song it is.
+
+---
+
+## 13. Known limitations (things not fully finished yet)
 
 - Port mismatches (e.g. a typo in `config.py`, or a motor plugged into
   the wrong port) are only caught when a command is actually sent to that
   port and does nothing - there's currently no diagnostic tool for this
   (see Section 9 for why).
-- Voice recognition (`ai/voice.py`) needs an internet connection to work,
-  and hasn't been fully connected to the current multi-brick setup yet.
-- Gesture recognition (`ai/gesture.py`) is designed assuming a right hand;
-  it hasn't been tested with a left hand.
+- Voice recognition works, but is not reliable enough to depend on for a
+  real performance - see Section 10 for details. Gesture recognition is
+  the more dependable AI input method.
+- Gesture recognition currently supports up to 5 instruments and 5 songs
+  (one per finger count on one hand each). Going beyond that would need
+  an additional gesture (e.g. a "mode switch") to select further down a
+  longer list.
+- Gesture stability buffering (Section 11) adds a small delay (a
+  fraction of a second) before a gesture is accepted, to filter out
+  jitter. This is a deliberate trade-off between responsiveness and
+  reliability.

@@ -119,7 +119,12 @@ automatically. It may take a minute or two.
 *(If you're setting up this project for the very first time and there's no
 `requirements.txt` file yet, type this instead:)*
 ```
-pip install customtkinter ev3_dc
+pip install customtkinter ev3_dc SpeechRecognition pyaudio mediapipe==0.10.9 opencv-python
+```
+*(If `pyaudio` gives an error during install, try this instead:)*
+```
+pip install pipwin
+pipwin install pyaudio
 ```
 *(Then, to create that list file for next time, type:)*
 ```
@@ -224,6 +229,38 @@ A window should open showing the app.
 
 ---
 
+## Step 13: Using voice and gesture control (optional)
+
+These are extra ways to control the app besides clicking buttons.
+
+### Voice recognition
+
+1. Click **Voice Recognition** in the app.
+2. Say **"Hey Robot"** followed by a command, e.g. "Hey Robot, play gong."
+3. Requires an internet connection to work.
+
+⚠️ **Honest warning:** voice recognition is not very reliable, especially
+for the Malay song names. It often mishears words. Gesture recognition
+(below) works much better - use voice mainly as a backup or demo feature,
+not something to depend on.
+
+### Gesture recognition
+
+1. Click **Gesture Recognition** - a webcam window will open.
+2. Hold up fingers on your **right hand** to select an instrument
+   (1 finger = 1st instrument, 2 fingers = 2nd, and so on, matching the
+   order in `config.py`).
+3. Hold up fingers on your **left hand** to select and play a song
+   (1 finger = 1st song, 2 fingers = 2nd, and so on).
+4. Make a **fist** with either hand to stop whatever song is playing.
+5. Press **Q** with the webcam window focused to close it.
+
+If the webcam window doesn't appear but the camera light turns on, close
+any other program that might be using your webcam (Zoom, Teams, browser
+tabs with camera access) and try again.
+
+---
+
 ## Things to watch out for
 
 - **Only connect your EV3 bricks to Bluetooth using their normal LEGO
@@ -248,3 +285,5 @@ A window should open showing the app.
 | App freezes when checking battery | A brick may have disconnected - try reconnecting all bricks |
 | Bluetooth pairing keeps failing | Remove the device in Windows Bluetooth settings, then pair again from scratch |
 | Motor doesn't move even though it says "Connected" | Double-check the port letter in `config.py` matches where the motor is actually plugged in |
+| Gesture window doesn't open, but webcam light turns on | Close other apps using the webcam (Zoom, Teams, browser camera tabs), then try again |
+| Voice recognition mishears commands often | This is a known limitation, especially for non-English song names - use gesture recognition instead for reliable control |
