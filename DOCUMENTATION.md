@@ -22,6 +22,9 @@ language. If you want setup/installation instructions instead, see
 11. [`ai/gesture.py` - gesture recognition](#11-aigesturepy---gesture-recognition)
 12. [Switching songs safely (stopping the previous one)](#12-switching-songs-safely-stopping-the-previous-one)
 13. [Known limitations](#13-known-limitations-things-not-fully-finished-yet)
+14. [Changing voice commands, the wake word, and gesture settings](#14-changing-voice-commands-the-wake-word-and-gesture-settings)
+15. [Turning voice and gesture recognition on/off](#15-turning-voice-and-gesture-recognition-onoff)
+16. [Layout structure (`gui.py`)](#16-layout-structure-guipy)
 
 ---
 
@@ -51,6 +54,10 @@ language. If you want setup/installation instructions instead, see
 - **Instance variable (`self.something`)** - a piece of data that belongs
   to one specific object, and can be used by any method inside that
   object's class.
+- **Fuzzy matching** - comparing two pieces of text to see how *similar*
+  they are, instead of requiring them to match exactly. Used in this
+  project so voice commands still work even when speech recognition
+  mishears a word slightly.
 
 ---
 
@@ -59,7 +66,7 @@ language. If you want setup/installation instructions instead, see
 The app works like a "brain and musician" system:
 
 ```
-User (clicks a button in the app)
+User (clicks a button, speaks, or shows a gesture)
             |
         gui.py  (the window you see and interact with)
             |
@@ -89,8 +96,8 @@ TraditionalMusicEV3/
 ├── config.py     - a list of which motor plays which instrument
 ├── songs.py      - the songs themselves (which notes play, and when)
 ├── ai/
-│   ├── voice.py   - listens for voice commands (working, but not very reliable - see Section 10)
-│   └── gesture.py - watches your webcam for hand gestures (working)
+│   ├── voice.py   - listens for voice commands
+│   └── gesture.py - watches your webcam for hand gestures
 └── requirements.txt
 ```
 
@@ -116,7 +123,8 @@ INSTRUMENTS = {
 ```
 
 - Each **name in quotes** (`"GONG"`, `"SARON"`) is what you'll call that
-  instrument everywhere else in the project (buttons, songs, etc.).
+  instrument everywhere else in the project (buttons, songs, voice
+  commands, gesture selection, etc.).
 - Each instrument points to a **list** of motors - usually just one, but
   it can be more than one if a big instrument needs several motors.
 - `"mac"` = which physical brick (its unique ID number).
@@ -138,9 +146,10 @@ INSTRUMENTS = {
    ```
 6. Save the file (**Ctrl + S**).
 7. That's it - no other file needs to change. The new instrument will
-   automatically show up in the status grid, and you can now use
-   `"KENONG"` in songs or add a button for it in `gui.py` (see Section 6
-   below for adding a button).
+   automatically show up in the status grid, become selectable by voice
+   ("play kenong"), become selectable by gesture (right hand finger
+   count), and you can add a manual button for it in `gui.py` if you want
+   (see Section 6 below).
 
 ### How to remove an EV3 brick / instrument
 
@@ -215,7 +224,7 @@ basically the same moment instead.
 
 ---
 
-## 5. `songs.py` - the actual songs
+## 5. `songs.py` - song data and playback scheduling
 
 ### How one note is written
 
@@ -250,8 +259,9 @@ basically the same moment instead.
    }
    ```
 3. Save the file.
-4. Add a button for it in `gui.py` (see Section 6 below) so it shows up
-   in the app.
+4. That's it - the new song automatically becomes selectable by voice
+   ("play your new song name"), by gesture (left hand finger count), and
+   you can add a manual button for it in `gui.py` too if you want.
 
 ### How to remove a song
 
@@ -266,13 +276,29 @@ Just change the `"beat"` numbers. Notes with the exact same `beat` number
 will play at the same time. There's no need to touch any other file to
 change timing - it's purely data inside `songs.py`.
 
+### Why `play_song` groups notes by beat before playing
+
+If two notes share the same `beat` value, they're fired together in
+separate threads instead of one after another - this keeps multi-brick
+timing tight instead of one instrument lagging slightly behind another
+due to per-brick Bluetooth latency.
+
+### The `stop_event` parameter
+
+`play_song()` accepts an optional `stop_event` (a `threading.Event`).
+While a song is playing, the code checks this before firing each beat -
+if it's been set, playback stops early instead of continuing to the end.
+This is what allows a gesture (fist) or a new song request to interrupt
+a song that's currently playing. See Section 12 for how this is used
+safely when switching between songs.
+
 ---
 
 ## 6. `gui.py` - the window and buttons
 
 This file builds the actual app window using a library called
-CustomTkinter, and connects each button to a function that does something
-(like sending a command to `ev3.py`).
+CustomTkinter, and connects each button (and each voice/gesture action)
+to a function that does something (like sending a command to `ev3.py`).
 
 ### How to add a button for a new song
 
@@ -418,9 +444,9 @@ that the whole brick did.
 ### How it works
 
 The app listens continuously in the background for a **wake word**
-("Hey Robot"). Once it hears that, it treats whatever you say right after
-as a command (e.g. "play gong"), and passes that text to `gui.py` to
-figure out what to do with it.
+("EV3"). Once it hears something close to that word, it treats whatever
+comes right after as a command (e.g. "play gong"), and passes that text
+to `gui.py` to figure out what to do with it.
 
 Voice recognition uses Google's free online speech-to-text service (via
 the `SpeechRecognition` library), which means **it needs an internet
@@ -428,34 +454,44 @@ connection to work at all**.
 
 ### Problems we ran into, and what we learned
 
-- **The original wake word was "Hey EV3."** This turned out to be a bad
-  choice - "EV3" isn't a normal English word, so Google's speech
-  recognizer kept mishearing it in different, inconsistent ways (e.g.
-  "evie 3," or garbling it into something unrelated). We changed the wake
-  word to **"Hey Robot"** instead - a common English word/phrase the
-  recognizer handles far more reliably.
+- **"EV3" is hard for speech recognition to get consistently right,**
+  since it's not a normal English word. Different attempts got
+  transcribed differently (e.g. "evie 3," or something unrelated
+  entirely). Two things helped a lot: setting the recognizer's language
+  to `"en-MY"` (Malaysian English) instead of the default, and using
+  **fuzzy matching** (accepting close phonetic matches like "robert" for
+  "robot," or "evie 3" for "EV3") instead of requiring an exact match.
 - **The wrong microphone was being used by default.** Windows lists many
   duplicate entries for the same physical microphone (different driver
   types), and letting the code just use "the default" sometimes picked a
   low-quality or incorrectly-routed one. We fixed this by explicitly
   specifying which microphone index to use (`MIC_INDEX` in `voice.py`),
-  found by testing with a small standalone script that lists all
-  available microphones and lets you try each one.
-- **Malay song names are still unreliable.** Even after fixing the wake
-  word and microphone, phrases like "Rasa Sayang" get badly mis-heard
-  (e.g. as "roses I am"), since Google's English speech model doesn't
-  know Malay words. We tried "fuzzy matching" (comparing the mis-heard
-  text against known song/instrument names to find the closest match
-  instead of requiring an exact match), but this on its own wasn't
-  reliable enough and sometimes matched to the wrong thing entirely.
+  found by testing with a small standalone script (`test_mic.py`) that
+  lists all available microphones and lets you try each one.
+- **Malay song names are still unreliable.** Even with the above fixes,
+  phrases like "Rasa Sayang" occasionally get badly mis-heard (e.g. as
+  "roses I am"), since Google's speech model doesn't know Malay words.
+  Fuzzy matching (comparing what was heard against known song/instrument
+  names to find the closest match) helps a lot but isn't perfect.
+- **Matching was originally case-sensitive by accident,** comparing
+  lowercase heard text against uppercase instrument names like `"GONG"` -
+  since these look completely different letter-by-letter to a simple
+  text comparison, single-word instrument commands like "drum" were
+  failing to match at all. Fixed by comparing everything in lowercase,
+  then mapping back to the correctly-cased real name afterward.
+- **Filler words like "play" were sometimes throwing off the matching
+  score,** especially for short instrument names. Fixed by stripping out
+  common filler words ("play," "the," "a," "please," "to") before
+  comparing.
 
 ### Current status
 
-Voice recognition works technically, but is **not reliable enough to
-depend on for a real performance** given the above. It's left in the
-project as a working feature you can demonstrate, but gesture recognition
-(Section 11) turned out to be the more dependable AI input method, and is
-the one actually recommended for live use.
+Voice recognition works and includes commands for instruments, songs,
+and actions (connect/disconnect/battery - see Section 14), but it is
+**not as reliable as gesture recognition** given the accent/mishearing
+challenges above. It's a genuinely useful backup/demo feature, but
+gesture recognition (Section 11) is the recommended input method for
+anything that needs to work consistently.
 
 ---
 
@@ -560,3 +596,188 @@ currently playing, regardless of which song it is.
   fraction of a second) before a gesture is accepted, to filter out
   jitter. This is a deliberate trade-off between responsiveness and
   reliability.
+- The microphone index used by voice recognition (`MIC_INDEX` in
+  `ai/voice.py`) is specific to the computer it was set up on. Moving to
+  a different computer requires finding and setting the correct index
+  again (see Section 14).
+
+---
+
+## 14. Changing voice commands, the wake word, and gesture settings
+
+### Changing the wake word
+
+In `ai/voice.py`, near the top:
+```python
+WAKE_WORD = "hey ev3"
+WAKE_TRIGGER = "ev3"
+```
+`WAKE_TRIGGER` is the word that's actually checked for (using fuzzy
+matching, so close mishearings still count). `WAKE_WORD` is just
+decorative display text shown in messages - changing it alone does
+nothing; you must change `WAKE_TRIGGER` to actually change what's
+detected.
+
+**Important, from real testing:** saying the wake word alone is enough -
+words like "hey" or "please" are NOT required by the code, they're just
+natural-sounding filler. Saying "EV3, drum" works exactly the same as
+"Hey EV3, please play the drum."
+
+### Changing the microphone used
+
+In `ai/voice.py`:
+```python
+MIC_INDEX = 1
+```
+This number is specific to the laptop it was set up on. On a different
+computer, this index will likely be wrong, and voice recognition will
+fail silently or mishear everything. To find the correct number on a new
+machine:
+
+1. Create a file called `test_mic.py` with this content:
+   ```python
+   import speech_recognition as sr
+
+   print("Available microphones:")
+   for i, name in enumerate(sr.Microphone.list_microphone_names()):
+       print(f"  {i}: {name}")
+
+   recognizer = sr.Recognizer()
+   microphone = sr.Microphone()
+
+   with microphone as source:
+       print("Adjusting for ambient noise...")
+       recognizer.adjust_for_ambient_noise(source, duration=1)
+       print("Listening...")
+       audio = recognizer.listen(source, timeout=10, phrase_time_limit=5)
+
+   print("Recognizing...")
+   try:
+       text = recognizer.recognize_google(audio)
+       print(f"You said: {text}")
+   except sr.UnknownValueError:
+       print("Could not understand audio")
+   except sr.RequestError as e:
+       print(f"Could not reach speech recognition service: {e}")
+   ```
+2. Run it, note which microphone number sounds like your actual laptop
+   microphone (usually something like "Microphone Array"), then try
+   changing `device_index=` in that script to test a few numbers until
+   one reliably transcribes what you say correctly.
+3. Update `MIC_INDEX` in `ai/voice.py` to that confirmed working number.
+
+### Adding or removing voice commands (beyond instruments/songs)
+
+In `gui.py`, inside `handle_voice_command()`:
+```python
+voice_actions = {
+    "connect": self.connect_ev3,
+    "disconnect": self.disconnect_ev3,
+    "battery": self.check_battery,
+    "check battery": self.check_battery,
+}
+```
+Add a new line following the same pattern to add a new voice-triggered
+action, pointing it at any existing method in `gui.py`. Remove a line to
+take that command away. Instrument and song commands don't need to be
+added here at all - they're picked up automatically from `config.py` and
+`songs.py`.
+
+### Changing the accent/language hint
+
+In `ai/voice.py`:
+```python
+SPEECH_LANGUAGE = "en-MY"
+```
+This tells Google's speech recognizer which accent to expect. Change
+this if voice recognition is being used by someone with a different
+accent - e.g. `"en-US"`, `"en-GB"`, `"en-AU"`, etc. are all valid options.
+
+### Changing gesture settings
+
+In `ai/gesture.py`:
+- **Which hand controls what:** currently right hand = instruments, left
+  hand = songs. This is set inside `_handle_hand()` - swap the `if side
+  == "right"` / `"left"` logic to reverse it.
+- **How many frames a gesture needs to be held before it counts:**
+  ```python
+  self._stability_threshold = 5
+  ```
+  Raise this number for steadier/more deliberate detection (but slower
+  to respond), lower it for a snappier response (but more prone to
+  jitter/false triggers).
+
+---
+
+## 15. Turning voice and gesture recognition on/off
+
+### Why they need an explicit stop, not just "always on"
+
+Both features run continuously once started, listening/watching in the
+background for the rest of the app session unless stopped. Since the
+voice wake word is "EV3" - a word that naturally comes up constantly
+while explaining or discussing the project - leaving it always-on risks
+accidental triggers from ordinary conversation. Both AI features are
+therefore designed to be turned on only when actually needed, and off
+again afterward.
+
+### How the buttons work
+
+Both the Voice Recognition and Gesture Recognition buttons act as
+on/off switches (not just "start" buttons) - clicking again while
+active stops that feature, and the button's text/color changes to make
+the current state clear at a glance.
+
+### Voice commands to control both features
+
+Since these are also available as voice commands (see Section 14's
+`voice_actions` dictionary): "stop listening" or "stop voice" turns off
+voice recognition (spoken through itself, so it takes effect right after
+that phrase is processed). "Start gesture" and "stop gesture" control
+gesture recognition the same way, but using dedicated start/stop actions
+rather than a toggle - this is deliberate, so the command always does
+exactly what it says regardless of the current state, rather than
+risking the opposite effect if a toggle command were misheard.
+
+### A note on response delay
+
+Because voice commands are matched using fuzzy comparison against known
+instrument/song/action names (rather than an instant exact-match check),
+there's a brief, normal processing delay between finishing a spoken
+command and the action actually happening - this is expected behavior,
+not a performance bug.
+
+---
+
+## 16. Layout structure (`gui.py`)
+
+### Why sections are wrapped in a `content_frame`
+
+Originally, each section (EV3 controls, song selection, instruments, AI
+mode) was packed directly onto the main window and stretched to its full
+width. On a wide window, this made buttons very wide relative to their
+text, giving the app a stretched, uneven look rather than a deliberately
+designed one.
+
+The fix: a `content_frame` with a fixed maximum width sits inside the
+main window and is centered; every section is placed inside
+`content_frame` instead of directly on the window. This keeps the
+interface a comfortable, consistent width no matter how large the window
+is resized.
+
+### Why song buttons are generated in a loop, not written one-by-one
+
+As more songs get added to `songs.py`, manually adding a matching button
+for each one in `gui.py` would be easy to forget and error-prone. Song
+buttons are instead generated automatically from `self.song_list` (which
+comes from `list_songs()` in `songs.py`), so adding a new song
+automatically gets it a button with zero changes needed in `gui.py`.
+
+One technical detail worth knowing: the button's click handler uses
+`lambda name=song_name: self.play_selected_song(name)`, specifically
+capturing `song_name` as a default argument. Without this, every
+generated button would end up playing the *last* song in the list
+instead of its own - a common Python pitfall when creating functions
+inside a loop, where the loop variable itself is looked up at the time
+the button is clicked (by which point the loop has already finished),
+not at the time the button was created.

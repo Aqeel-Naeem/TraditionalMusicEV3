@@ -1,8 +1,9 @@
 # Traditional Music EV3 Controller
 
 This is an app that lets you control LEGO EV3 robots from your computer to
-play traditional musical instruments (like a gong, saron, and drum) - either
-by clicking buttons, or by playing a full song automatically.
+play traditional musical instruments (like a gong, saron, and drum) -
+either by clicking buttons, playing a full song automatically, using your
+voice, or using hand gestures.
 
 This guide assumes you've never used VS Code or written code before, so it
 explains every step in detail.
@@ -16,6 +17,8 @@ explains every step in detail.
   do not install any special robot software on them)
 - Motors plugged into the EV3 bricks
 - Bluetooth on your computer
+- A webcam (for gesture control) and a microphone (for voice control) -
+  both optional, only needed if you want to use those features
 
 ---
 
@@ -135,6 +138,22 @@ pip freeze > requirements.txt
 
 ## Step 8: Connect your EV3 brick(s) to your computer via Bluetooth
 
+> **A note on EV3 Bluetooth reliability (from real experience building
+> this project):** EV3 Bluetooth connections on Windows can be
+> unpredictable - some laptops connect smoothly every time, others
+> struggle no matter what you try. In practice, when one EV3 brick was
+> being difficult, simply trying a *different* physical brick sometimes
+> solved it immediately, even with identical setup steps. This isn't a
+> guaranteed fix and the exact cause isn't fully understood, but it's
+> worth trying if you're stuck.
+>
+> Also, in testing, the very first time you click **Connect EV3** in the
+> app (with a brick that hasn't been paired to that computer before),
+> Windows sometimes automatically shows an "Add a device" pop-up right
+> at that moment - if that happens, just accept it and enter `1234` if
+> asked for a PIN. This has only needed to happen once per brick per
+> computer; after that, it connects normally through the app.
+
 Do this once for each EV3 brick you'll use.
 
 1. On the EV3 brick itself, use its buttons to go to **Settings**
@@ -235,29 +254,66 @@ These are extra ways to control the app besides clicking buttons.
 
 ### Voice recognition
 
-1. Click **Voice Recognition** in the app.
-2. Say **"Hey Robot"** followed by a command, e.g. "Hey Robot, play gong."
+1. Click **Voice Recognition** in the app (the button turns red and says
+   "Stop Voice Recognition" while it's listening - click it again, or
+   say "EV3, stop listening," to turn it off).
+2. Say a word close to **"EV3"** followed by your command, e.g.
+   "Hey EV3, play gong" or "EV3, play drum."
 3. Requires an internet connection to work.
 
-⚠️ **Honest warning:** voice recognition is not very reliable, especially
-for the Malay song names. It often mishears words. Gesture recognition
-(below) works much better - use voice mainly as a backup or demo feature,
-not something to depend on.
+**Note:** you only need to say something close to "EV3" plus your
+command - words like "Hey" or "please" are just for natural phrasing and
+aren't actually required by the app. "EV3 drum" works exactly the same
+as "Hey EV3, please play the drum."
+
+**Voice commands you can use:**
+- Any instrument name (e.g. "gong", "saron", "drum")
+- Any song name (e.g. "rasa sayang", "test motors")
+- "connect" - connects to all EV3 bricks
+- "disconnect" - disconnects all EV3 bricks
+- "battery" or "check battery" - checks battery levels
+- "stop song" or "stop music" - stops whatever song is currently playing
+- "start gesture" - turns on gesture recognition
+- "stop gesture" - turns off gesture recognition
+- "stop listening" or "stop voice" - turns off voice recognition
+
+**Note on response delay:** since voice commands are matched using
+"fuzzy matching" (finding the closest known word to what was heard),
+there's a small delay between speaking and the action happening -
+usually well under a second, but noticeable. This is normal, not a bug.
+
+**If you're setting this up on a new computer**, voice recognition may
+not work correctly until you find the right microphone for that
+computer. See `DOCUMENTATION.md` (Section 14) for how to do this using
+the included `test_mic.py` script.
+
+Honest warning: voice recognition is not perfectly reliable,
+especially for non-English song names. It sometimes mishears words.
+Gesture recognition (below) tends to work more consistently - use voice
+mainly as a backup or demo feature, not something to depend on entirely.
 
 ### Gesture recognition
 
-1. Click **Gesture Recognition** - a webcam window will open.
+1. Click **Gesture Recognition** (the button turns red and says "Stop
+   Gesture Recognition" while it's active - click it again, or say
+   "EV3, stop gesture," to turn it off) - a webcam window will open.
 2. Hold up fingers on your **right hand** to select an instrument
    (1 finger = 1st instrument, 2 fingers = 2nd, and so on, matching the
    order in `config.py`).
 3. Hold up fingers on your **left hand** to select and play a song
    (1 finger = 1st song, 2 fingers = 2nd, and so on).
 4. Make a **fist** with either hand to stop whatever song is playing.
-5. Press **Q** with the webcam window focused to close it.
+5. Press **Q** with the webcam window focused to close the window (the
+   app's Gesture Recognition button won't automatically update if you
+   close it this way - use the button or a voice command instead for a
+   cleaner stop).
 
 If the webcam window doesn't appear but the camera light turns on, close
 any other program that might be using your webcam (Zoom, Teams, browser
 tabs with camera access) and try again.
+
+Gesture recognition works best with decent, consistent lighting - very
+dim or uneven lighting can make hand tracking less reliable.
 
 ---
 
@@ -271,9 +327,12 @@ tabs with camera access) and try again.
   and try again - this is a normal EV3 quirk, not a mistake on your part.
 - **If Bluetooth pairing keeps failing**, go to Windows Settings >
   Bluetooth & devices, remove the EV3 from the list, then pair it again
-  from scratch.
+  from scratch. If it still won't cooperate, try a different physical
+  brick if you have one available (see the note in Step 8).
 - **Keep your EV3 bricks reasonably close to your computer.** Bluetooth
   range is limited, especially with walls or other obstacles in the way.
+- **Voice and gesture recognition need their own hardware access.** Make
+  sure no other app is using your microphone or webcam at the same time.
 
 ---
 
@@ -283,7 +342,8 @@ tabs with camera access) and try again.
 |---|---|
 | "No EV3 device found" when reconnecting | Wait a few seconds after disconnecting before clicking Connect again |
 | App freezes when checking battery | A brick may have disconnected - try reconnecting all bricks |
-| Bluetooth pairing keeps failing | Remove the device in Windows Bluetooth settings, then pair again from scratch |
+| Bluetooth pairing keeps failing | Remove the device in Windows Bluetooth settings, then pair again from scratch. Trying a different physical brick sometimes helps too |
 | Motor doesn't move even though it says "Connected" | Double-check the port letter in `config.py` matches where the motor is actually plugged in |
 | Gesture window doesn't open, but webcam light turns on | Close other apps using the webcam (Zoom, Teams, browser camera tabs), then try again |
 | Voice recognition mishears commands often | This is a known limitation, especially for non-English song names - use gesture recognition instead for reliable control |
+| Voice recognition doesn't seem to hear anything at all | You may be on a new computer - the microphone setting needs to be updated for this specific machine, see `DOCUMENTATION.md` Section 14 |

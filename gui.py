@@ -16,7 +16,7 @@ class EV3App(ctk.CTk):
 
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
-        self.geometry("900x800")
+        self.geometry("700x700")
 
         self.current_stop_event = None
         self.song_list = list_songs()
@@ -107,69 +107,63 @@ class EV3App(ctk.CTk):
         )
         title.pack(pady=20)
 
+        self.content_frame = ctk.CTkFrame(self, fg_color="transparent", width=700)
+        self.content_frame.pack(pady=10)
+
         #Instrument status
-        status_grid_frame = ctk.CTkFrame(self)
-        status_grid_frame.pack(padx=20, pady=10, fill="x")
+        status_grid_frame = ctk.CTkFrame(self.content_frame)
+        status_grid_frame.pack(padx=10, pady=12, fill="x")
         self.create_status_grid(status_grid_frame)
 
         # EV3 Section
-        ev3_frame = ctk.CTkFrame(self)
-        ev3_frame.pack(padx=20, pady=10, fill="x")
+        ev3_frame = ctk.CTkFrame(self.content_frame)
+        ev3_frame.pack(padx=10, pady=12, fill="x")
+        ev3_frame.grid_columnconfigure((0, 1), weight=1)
 
         self.status_label = ctk.CTkLabel(
             ev3_frame,
             text="EV3 Status: Disconnected", text_color="#ef4444",
             font=("Arial", 18)
         )
-        self.status_label.pack(pady=10)
+        self.status_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         self.connect_button = ctk.CTkButton(
-            ev3_frame,
-            text="Connect EV3",
-            command=self.connect_ev3
+            ev3_frame, text="Connect EV3", command=self.connect_ev3
         )
-        self.connect_button.pack(pady=10)
+        self.connect_button.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
         self.disconnect_button = ctk.CTkButton(
-            ev3_frame,
-            text="Disconnect EV3",
-            command=self.disconnect_ev3
+            ev3_frame, text="Disconnect EV3", command=self.disconnect_ev3
         )
-        self.disconnect_button.pack(pady=10)
+        self.disconnect_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
 
         battery_button = ctk.CTkButton(
             ev3_frame, text="Check Battery", command=self.check_battery
         )
-        battery_button.pack(pady=10)
+        battery_button.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         # Song Section
-        song_frame = ctk.CTkFrame(self)
-        song_frame.pack(padx=20, pady=10, fill="x")
+        song_frame = ctk.CTkFrame(self.content_frame)
+        song_frame.pack(padx=10, pady=12, fill="x")
 
         song_title = ctk.CTkLabel(
-            song_frame,
-            text="🎼 Song Selection",
-            font=("Arial", 18)
+            song_frame, text="🎼 Song Selection", font=("Arial", 18)
         )
-        song_title.pack(pady=10)
+        song_title.grid(row=0, column=0, columnspan=len(self.song_list), padx=10, pady=10, sticky="ew")
 
-        song_button = ctk.CTkButton(
-            song_frame,
-            text="Rasa Sayang",
-            command=lambda: self.play_selected_song("Rasa Sayang")
-        )
-        song_button.pack(pady=10)
+        song_frame.grid_columnconfigure(tuple(range(len(self.song_list))), weight=1)
 
-        song_button = ctk.CTkButton(
-            song_frame,
-            text="Test Motors",
-            command=lambda: self.play_selected_song("Test Motors")
-        )
-        song_button.pack(pady=10)
+        for i, song_name in enumerate(self.song_list):
+            btn = ctk.CTkButton(
+                song_frame,
+                text=song_name,
+                command=lambda name=song_name: self.play_selected_song(name)
+            )
+            btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
 
         # Instrument Control Section
-        instrument_frame = ctk.CTkFrame(self)
-        instrument_frame.pack(padx=20, pady=10, fill="x")
+        instrument_frame = ctk.CTkFrame(self.content_frame)
+        instrument_frame.pack(padx=10, pady=12, fill="x")
         instrument_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         instrument_title = ctk.CTkLabel(
@@ -189,23 +183,24 @@ class EV3App(ctk.CTk):
         drum_button.grid(row=1, column=2, padx=10, pady=10, sticky="ew")
 
         # AI Section
-        ai_frame = ctk.CTkFrame(self)
-        ai_frame.pack(padx=20, pady=10, fill="x")
+        ai_frame = ctk.CTkFrame(self.content_frame)
+        ai_frame.pack(padx=10, pady=12, fill="x")
+        ai_frame.grid_columnconfigure((0, 1), weight=1)
 
         ai_title = ctk.CTkLabel(
             ai_frame, text="🤖 AI Mode", font=("Arial", 18)
         )
-        ai_title.pack(pady=10)
+        ai_title.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
-        voice_button = ctk.CTkButton(
-            ai_frame, text="Voice Recognition", command=self.voice.start
+        self.voice_button = ctk.CTkButton(
+            ai_frame, text="Voice Recognition", command=self.toggle_voice
         )
-        voice_button.pack(pady=10)
+        self.voice_button.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
-        gesture_button = ctk.CTkButton(
-            ai_frame, text="Gesture Recognition", command=self.gesture.start
+        self.gesture_button = ctk.CTkButton(
+            ai_frame, text="Gesture Recognition", command=self.toggle_gesture
         )
-        gesture_button.pack(pady=10)
+        self.gesture_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
 
     def create_status_grid(self, parent_frame):
         self.instrument_status_labels = {}
@@ -256,17 +251,35 @@ class EV3App(ctk.CTk):
         self._health_check_running = False
 
     def handle_voice_command(self, command):
-        # Build a list of everything the command could mean: instrument names + song names
-        known_targets = list(INSTRUMENTS.keys()) + self.song_list  # e.g. ["GONG", "SARON", "DRUM", "Rasa Sayang", "Test Motors"]
+        # Actions that aren't instruments or songs - they call a method directly
+        voice_actions = {
+            "connect": self.connect_ev3,
+            "disconnect": self.disconnect_ev3,
+            "battery": self.check_battery,
+            "check battery": self.check_battery,
+            "stop listening": self.stop_voice_command,
+            "stop voice": self.stop_voice_command,
+            "stop song": self.stop_song,
+            "stop music": self.stop_song,
+            "start gesture": self.start_gesture_command,
+            "stop gesture": self.stop_gesture_command,
+        }
 
-        matches = difflib.get_close_matches(command, known_targets, n=1, cutoff=0.3)
+        # Strip common filler words that don't help matching and can throw off scoring
+        filler_words = {"play", "the", "a", "please", "to"}
+        cleaned = " ".join(w for w in command.split() if w.lower() not in filler_words)
+        if not cleaned:
+            cleaned = command
+
+        known_targets = list(INSTRUMENTS.keys()) + self.song_list + list(voice_actions.keys())
+        lower_to_real = {t.lower(): t for t in known_targets}
+        lower_targets = list(lower_to_real.keys())
+
+        matches = difflib.get_close_matches(cleaned.lower(), lower_targets, n=1, cutoff=0.4)
 
         if not matches:
-            # Try matching word-by-word too, in case the whole phrase doesn't match well
-            # but one word in it does (e.g. "play roses i am" -> "am" alone won't help,
-            # but this catches simpler cases like "gong" hidden inside a longer phrase)
-            for word in command.split():
-                word_matches = difflib.get_close_matches(word, known_targets, n=1, cutoff=0.5)
+            for word in cleaned.split():
+                word_matches = difflib.get_close_matches(word.lower(), lower_targets, n=1, cutoff=0.6)
                 if word_matches:
                     matches = word_matches
                     break
@@ -275,13 +288,45 @@ class EV3App(ctk.CTk):
             print(f"Could not match voice command to anything known: '{command}'")
             return
 
-        target = matches[0]
+        target = lower_to_real[matches[0]]
         print(f"Matched '{command}' -> '{target}'")
 
-        if target in INSTRUMENTS:
+        if target.lower() in voice_actions:
+            voice_actions[target.lower()]()
+        elif target in INSTRUMENTS:
             self.ev3.send_command(target)
         else:
             self.play_selected_song(target)
+
+    def toggle_voice(self):
+        if self.voice._listening:
+            self.voice.stop()
+            self.voice_button.configure(text="Voice Recognition", fg_color=("#3b82f6", "#1e40af"))
+        else:
+            self.voice.start()
+            self.voice_button.configure(text="Stop Voice Recognition", fg_color="#ef4444")
+
+    def stop_voice_command(self):
+        self.voice.stop()
+        # Schedule the button update on the main thread, since this runs
+        # from voice recognition's background thread, not the GUI thread
+        self.after(0, lambda: self.voice_button.configure(
+            text="Voice Recognition", fg_color=("#3b82f6", "#1e40af")
+        ))
+
+    def start_gesture_command(self):
+        if not self.gesture._running:
+            self.gesture.start()
+            self.after(0, lambda: self.gesture_button.configure(
+                text="Stop Gesture Recognition", fg_color="#ef4444"
+            ))
+
+    def stop_gesture_command(self):
+        if self.gesture._running:
+            self.gesture.stop()
+            self.after(0, lambda: self.gesture_button.configure(
+                text="Gesture Recognition", fg_color=("#3b82f6", "#1e40af")
+            ))
 
     def handle_instrument_gesture(self, count):
         instrument_list = list(INSTRUMENTS.keys())  # reflects config.py automatically
@@ -299,6 +344,14 @@ class EV3App(ctk.CTk):
             self.play_selected_song(song_name)
         else:
             print(f"No song mapped to {count} finger(s) (only {len(self.song_list)} song(s) available)")
+
+    def toggle_gesture(self):
+        if self.gesture._running:
+            self.gesture.stop()
+            self.gesture_button.configure(text="Gesture Recognition", fg_color=("#3b82f6", "#1e40af"))
+        else:
+            self.gesture.start()
+            self.gesture_button.configure(text="Stop Gesture Recognition", fg_color="#ef4444")
 
     def stop_song(self):
         if self.current_stop_event is not None:
