@@ -5,9 +5,10 @@ SONGS = {
     "Rasa Sayang": [
         # "key" refers to which motor within that instrument's motor list to strike.
         # Omit "key" (or set to None) to fire ALL motors for that instrument together.
+        # speed defaults to 50
         {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 0.5},
-        {"instrument": "SARON", "key": 0,    "beat": 0.5,  "duration": 0.25},
-        {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25},
+        {"instrument": "SARON", "key": 0,    "beat": 0.5,  "duration": 0.25, "speed": 100},
+        {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25, "speed": 10},
         {"instrument": "DRUM",  "key": None, "beat": 1.0,  "duration": 0.5},
         {"instrument": "SARON", "key": 0,    "beat": 1.5,  "duration": 0.25},
         {"instrument": "SARON", "key": 1,    "beat": 1.75, "duration": 0.25},
@@ -19,8 +20,8 @@ SONGS = {
 
     "Test Motors": [
         {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 1.0},
-        {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0},
-        {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0},
+        {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0, "speed": 10},
+        {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0, "speed": 100},
         {"instrument": "DRUM",  "key": None, "beat": 3.0,  "duration": 1.0},
     ],
 }

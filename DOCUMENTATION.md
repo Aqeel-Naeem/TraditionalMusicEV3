@@ -229,7 +229,7 @@ basically the same moment instead.
 ### How one note is written
 
 ```python
-{"instrument": "SARON", "key": 0, "beat": 0.5, "duration": 0.25}
+{"instrument": "SARON", "key": 0, "beat": 0.5, "duration": 0.25, "speed": 50}
 ```
 
 - `"instrument"` - which instrument plays (must match a name from
@@ -241,6 +241,11 @@ basically the same moment instead.
 - `"beat"` - **when** this note plays, measured in seconds *from the very
   start of the song* (not from the note before it).
 - `"duration"` - how many seconds the motor should move for.
+- `"speed"` - *(optional)* how fast/forcefully the motor moves, from 0 to
+  100. If left out, it defaults to 50. Use a higher number for a
+  stronger/faster hit (e.g. a big gong strike), and a lower number for a
+  gentler one. This is separate from `"duration"` - duration is *how
+  long* the motor moves, speed is *how fast* it moves while doing so.
 
 ### How to add a new song
 
