@@ -19,10 +19,16 @@ SONGS = {
     ],
 
     "Test Motors": [
-        {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 1.0},
-        {"instrument": "SARON", "key": 0,    "beat": 1.0,  "duration": 1.0, "speed": 10},
-        {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0, "speed": 100},
-        {"instrument": "DRUM",  "key": None, "beat": 3.0,  "duration": 1.0},
+        # Basic check that every instrument responds
+        {"instrument": "GONG",  "key": None, "beat": 0.0, "duration": 1.0},
+        {"instrument": "SARON", "key": 0,    "beat": 1.0, "duration": 1.0},
+        {"instrument": "SARON", "key": 1,    "beat": 2.0, "duration": 1.0},
+        {"instrument": "DRUM",  "key": None, "beat": 3.0, "duration": 1.0},
+ 
+        # Speed demo: same instrument, same duration, only speed differs -
+        # a clean side-by-side comparison for demo purposes.
+        {"instrument": "DRUM", "key": None, "beat": 5.0, "duration": 1.0, "speed": 20},
+        {"instrument": "DRUM", "key": None, "beat": 7.0, "duration": 1.0, "speed": 100},
     ],
 }
 
@@ -76,6 +82,7 @@ def play_song(ev3, song_notes, tempo=1.0, stop_event=None):
                     "command": note["instrument"],
                     "key": note.get("key"),
                     "duration": note["duration"],
+                    "speed": note.get("speed", 50),
                 },
                 daemon=True,
             )
