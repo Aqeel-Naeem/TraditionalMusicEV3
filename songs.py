@@ -8,7 +8,7 @@ SONGS = {
         # speed defaults to 50
         {"instrument": "GONG",  "key": None, "beat": 0.0,  "duration": 0.5},
         {"instrument": "SARON", "key": 0,    "beat": 0.5,  "duration": 0.25, "speed": 100},
-        {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25, "speed": 10},
+        {"instrument": "SARON", "key": 1,    "beat": 0.75, "duration": 0.25, "speed": 10, "direction": "counterclockwise"}, 
         {"instrument": "DRUM",  "key": None, "beat": 1.0,  "duration": 0.5},
         {"instrument": "SARON", "key": 0,    "beat": 1.5,  "duration": 0.25},
         {"instrument": "SARON", "key": 1,    "beat": 1.75, "duration": 0.25},
@@ -83,6 +83,7 @@ def play_song(ev3, song_notes, tempo=1.0, stop_event=None):
                     "key": note.get("key"),
                     "duration": note["duration"],
                     "speed": note.get("speed", 50),
+                    "direction": note.get("direction", "clockwise"),
                 },
                 daemon=True,
             )

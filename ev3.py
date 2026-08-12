@@ -105,7 +105,7 @@ class EV3:
     def is_instrument_connected(self, instrument):
         return self._status.get(instrument, False)
 
-    def send_command(self, command, key=None, duration=0.3, speed=50):
+    def send_command(self, command, key=None, duration=0.3, speed=50, direction="clockwise"):
         """
         Fires motor(s) for this instrument.
         - If key is None: fires ALL motors for this instrument together
@@ -113,11 +113,23 @@ class EV3:
         - If key is given (an index into that instrument's motor list):
           fires ONLY that specific motor - use this for big instruments
           where each motor covers a different key/section (e.g. SARON key 0, 1, 2...).
+        - direction may be "clockwise" or "counterclockwise". It defaults
+          to "clockwise" so existing callers keep their current behavior.
         Returns True if sent, False if unavailable.
         """
         if not self._status.get(command, False):
             print(f"Cannot send '{command}': not connected")
             return False
+
+        direction_map = {
+            "clockwise": 1,
+            "counterclockwise": -1,
+        }
+        if direction not in direction_map:
+            print(f"Cannot send '{command}': invalid direction '{direction}' "
+                  "(use 'clockwise' or 'counterclockwise')")
+            return False
+        motor_direction = direction_map[direction]
 
         motors = self._motors[command]  # list of (motor, mac) tuples
 
@@ -131,7 +143,11 @@ class EV3:
 
         def _run_motor(motor, mac):
             try:
-                motor.start_move_for(duration=duration, speed=speed)
+                motor.start_move_for(
+                    duration=duration,
+                    speed=speed,
+                    direction=motor_direction,
+                )
             except Exception as e:
                 # A motor command failing mid-performance usually means that
                 # brick's connection dropped - mark BOTH the specific brick

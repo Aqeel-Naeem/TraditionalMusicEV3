@@ -217,7 +217,7 @@ basically the same moment instead.
 |---|---|
 | `connect()` | Connects to every brick listed in `config.py`, one time each, then sets up each instrument's motor(s). |
 | `disconnect()` | Disconnects everything, and waits a couple of seconds afterward (EV3 bricks need a short pause before they'll accept a new connection). |
-| `send_command(command, key=None, ...)` | Tells an instrument to play. `key=None` moves all of that instrument's motors together; `key=0`, `key=1`, etc. moves just one specific motor. |
+| `send_command(command, key=None, ...)` | Tells an instrument to play. `key=None` moves all of that instrument's motors together; `key=0`, `key=1`, etc. moves just one specific motor. An optional direction (`"clockwise"` or `"counterclockwise"`) controls the motor rotation; it defaults to clockwise. |
 | `is_instrument_connected(instrument)` | Answers yes/no: is this specific instrument currently working? Used to color the status grid green/red. |
 | `get_battery_levels()` | Checks the battery percentage of every connected brick. |
 | `health_check()` | Actively checks every brick that's supposed to be connected, even if nothing has tried to use it recently. Catches a brick that quietly stopped working while sitting idle. See Section 8 for details. |
@@ -229,7 +229,7 @@ basically the same moment instead.
 ### How one note is written
 
 ```python
-{"instrument": "SARON", "key": 0, "beat": 0.5, "duration": 0.25, "speed": 50}
+{"instrument": "SARON", "key": 0, "beat": 0.5, "duration": 0.25, "speed": 50, "direction": "counterclockwise",}
 ```
 
 - `"instrument"` - which instrument plays (must match a name from
@@ -246,6 +246,7 @@ basically the same moment instead.
   stronger/faster hit (e.g. a big gong strike), and a lower number for a
   gentler one. This is separate from `"duration"` - duration is *how
   long* the motor moves, speed is *how fast* it moves while doing so.
+- `"direction"` - *(optional)* which direction the motor moves: `"clockwise"` or `"counterclockwise"`. If left out, it defaults to `"clockwise"`. The application converts these names to the EV3 library's numeric direction values (`1` and `-1`) internally.
 
 ### How to add a new song
 
