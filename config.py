@@ -11,9 +11,9 @@ INSTRUMENTS = {
     ],
     # Positioned instruments such as SARON are configured below. Keeping the
     # name here lets the GUI continue to show its connection status.
-    "BONANG": [],
+    "GAMELAN": [],
     "CHIME": [],
-    "DRUM": [
+    "GENDANG": [
         {"mac": "00:16:53:43:d6:4a", "port": "A"},
     ],
     # Add more instruments here as needed, e.g.:
@@ -30,7 +30,7 @@ POSITIONED_INSTRUMENTS = {
             "left": {
                 "controller": {"mac": "00:16:53:41:95:2e", "port": "A"},
                 "hitter": {"mac": "00:16:53:41:95:2e", "port": "D"},
-                "hitter_direction": "counterclockwise",
+                "hitter_direction": "clockwise",
             },
             "right": {
                 # PLACEHOLDER - replace with the right EV3 brick's real MAC
@@ -38,20 +38,31 @@ POSITIONED_INSTRUMENTS = {
                 # Ports assumed to match the left pair's layout (A/D).
                 "controller": {"mac": "00:16:53:XX:XX:XX", "port": "A"},
                 "hitter": {"mac": "00:16:53:XX:XX:XX", "port": "D"},
-                "hitter_direction": "counterclockwise",
+                "hitter_direction": "clockwise",
             },
         },
         # Dummy calibration layout. Replace these note labels and angles with
         # the real Saron layout after measuring each hitting plate.
+        #
+        # IMPORTANT: angle 0 is NOT a fixed physical point - it's wherever
+        # the controller motor happens to be positioned the moment the app
+        # connects (ev3_dc resets each motor's "0" reference on creation).
+        # The hitting stick MUST be physically placed at the true center of
+        # each side BEFORE clicking "Connect EV3", every time, or these
+        # angles will be offset from the wrong starting point.
+        #
+        # Angles are symmetric around that center: 2 notes to the left
+        # (negative) and 2 to the right (positive) of the stick's resting
+        # position, matching the real mechanism.
         "notes": {
-            "Saron 1": {"pair": "left", "angle": 0},
-            "Saron 2": {"pair": "left", "angle": 30},
-            "Saron 3": {"pair": "left", "angle": 60},
-            "Saron 4": {"pair": "left", "angle": 90},
-            "Saron 5": {"pair": "right", "angle": 0},
-            "Saron 6": {"pair": "right", "angle": 30},
-            "Saron 7": {"pair": "right", "angle": 60},
-            "Saron 8": {"pair": "right", "angle": 90},
+            "Saron 1": {"pair": "left", "angle": -45},
+            "Saron 2": {"pair": "left", "angle": -15},
+            "Saron 3": {"pair": "left", "angle": 15},
+            "Saron 4": {"pair": "left", "angle": 45},
+            "Saron 5": {"pair": "right", "angle": -45},
+            "Saron 6": {"pair": "right", "angle": -15},
+            "Saron 7": {"pair": "right", "angle": 15},
+            "Saron 8": {"pair": "right", "angle": 45},
         },
         "defaults": {
             "position_speed": 50,

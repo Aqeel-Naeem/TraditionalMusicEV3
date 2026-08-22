@@ -5,7 +5,7 @@ import difflib
 from ai.voice import VoiceController
 from ai.gesture import GestureController
 from songs import get_song, play_song, list_songs
-from config import INSTRUMENTS
+from config import INSTRUMENTS, POSITIONED_INSTRUMENTS
 
 class EV3App(ctk.CTk):
 
@@ -16,13 +16,19 @@ class EV3App(ctk.CTk):
 
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
-        self.geometry("700x700")
+        self.geometry("760x700")
 
         self.current_stop_event = None
         self.song_list = list_songs()
         self.current_song_index = 0
         self._health_check_running = False
         self.song_playing = False
+
+        # One combined list, used everywhere (status grid, buttons, gesture,
+        # voice matching) - so an instrument only needs to be added to
+        # config.py once, in EITHER INSTRUMENTS or POSITIONED_INSTRUMENTS,
+        # and it automatically shows up consistently across the whole app.
+        self.all_instruments = list(INSTRUMENTS.keys()) + list(POSITIONED_INSTRUMENTS.keys())
 
         self.voice = VoiceController(on_command=self.handle_voice_command)
         self.gesture = GestureController(
@@ -59,15 +65,6 @@ class EV3App(ctk.CTk):
         self.status_label.configure(text="EV3 Status: Disconnected", text_color="#ef4444")
         self.connect_button.configure(text="Connect EV3", state="normal")
         self.disconnect_button.configure(state="normal")
-
-    def play_gong(self):
-        self.ev3.send_command("GONG")
-
-    def play_saron(self):
-        self.ev3.send_command("SARON")
-
-    def play_drum(self):
-        self.ev3.send_command("DRUM")
 
     def play_selected_song(self, song_name):
         song_notes = get_song(song_name)
@@ -164,23 +161,26 @@ class EV3App(ctk.CTk):
         # Instrument Control Section
         instrument_frame = ctk.CTkFrame(self.content_frame)
         instrument_frame.pack(padx=10, pady=12, fill="x")
-        instrument_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         instrument_title = ctk.CTkLabel(
             instrument_frame,
             text="🥁 Instrument Control",
             font=("Arial", 18)
         )
-        instrument_title.grid(row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=3)
+        instrument_title.grid(
+            row=0, column=0, padx=10, pady=10, sticky="ew",
+            columnspan=len(self.all_instruments)
+        )
 
-        gong_button = ctk.CTkButton(instrument_frame, text="Gong", command=self.play_gong)
-        gong_button.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        instrument_frame.grid_columnconfigure(tuple(range(len(self.all_instruments))), weight=1)
 
-        saron_button = ctk.CTkButton(instrument_frame, text="Saron", command=self.play_saron)
-        saron_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
-
-        drum_button = ctk.CTkButton(instrument_frame, text="Drum", command=self.play_drum)
-        drum_button.grid(row=1, column=2, padx=10, pady=10, sticky="ew")
+        for i, instrument_name in enumerate(self.all_instruments):
+            btn = ctk.CTkButton(
+                instrument_frame,
+                text=instrument_name.title(),
+                command=lambda name=instrument_name: self.ev3.send_command(name)
+            )
+            btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
 
         # AI Section
         ai_frame = ctk.CTkFrame(self.content_frame)
@@ -205,9 +205,9 @@ class EV3App(ctk.CTk):
     def create_status_grid(self, parent_frame):
         self.instrument_status_labels = {}
 
-        parent_frame.grid_columnconfigure(tuple(range(len(INSTRUMENTS))), weight=1)
+        parent_frame.grid_columnconfigure(tuple(range(len(self.all_instruments))), weight=1)
 
-        for i, instrument in enumerate(INSTRUMENTS.keys()):
+        for i, instrument in enumerate(self.all_instruments):
             label = ctk.CTkLabel(
                 parent_frame,
                 text=f"{instrument}: Unknown",
@@ -271,7 +271,7 @@ class EV3App(ctk.CTk):
         if not cleaned:
             cleaned = command
 
-        known_targets = list(INSTRUMENTS.keys()) + self.song_list + list(voice_actions.keys())
+        known_targets = self.all_instruments + self.song_list + list(voice_actions.keys())
         lower_to_real = {t.lower(): t for t in known_targets}
         lower_targets = list(lower_to_real.keys())
 
@@ -293,7 +293,7 @@ class EV3App(ctk.CTk):
 
         if target.lower() in voice_actions:
             voice_actions[target.lower()]()
-        elif target in INSTRUMENTS:
+        elif target in self.all_instruments:
             self.ev3.send_command(target)
         else:
             self.play_selected_song(target)
@@ -329,10 +329,9 @@ class EV3App(ctk.CTk):
             ))
 
     def handle_instrument_gesture(self, count):
-        instrument_list = list(INSTRUMENTS.keys())  # reflects config.py automatically
         index = count - 1
-        if 0 <= index < len(instrument_list):
-            instrument = instrument_list[index]
+        if 0 <= index < len(self.all_instruments):
+            instrument = self.all_instruments[index]
             self.ev3.send_command(instrument)
             print(f"Right hand {count} finger(s) -> {instrument}")
 

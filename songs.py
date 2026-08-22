@@ -124,8 +124,13 @@ SONGS = {
 
     "Test Motors": [
         # Degree-based strike calibration: move out, then automatically return.
-        {"instrument": "SARON", "note": "Saron 1", "beat": 0.0, "hit_degrees": 360, "hit_speed": 100},
-        {"instrument": "SARON", "note": "Saron 2", "beat": 1.0, "hit_degrees": 180, "hit_speed": 80},
+        # {"instrument": "SARON", "note": "Saron 1", "beat": 0.0, "hit_degrees": 360, "hit_speed": 100},
+        # {"instrument": "SARON", "note": "Saron 2", "beat": 1.0, "hit_degrees": 180, "hit_speed": 80},
+
+        {"instrument": "SARON", "note": "Saron 1", "beat": 0.0},
+        {"instrument": "SARON", "note": "Saron 2", "beat": 0.5},
+        {"instrument": "SARON", "note": "Saron 3", "beat": 1.0},
+        {"instrument": "SARON", "note": "Saron 4", "beat": 1.5},
     ],
 }
 
