@@ -16,7 +16,7 @@ class EV3App(ctk.CTk):
 
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
-        self.geometry("760x700")
+        self.geometry("1000x700")
 
         self.current_stop_event = None
         self.song_list = list_songs()

@@ -9,15 +9,33 @@ INSTRUMENTS = {
     "GONG": [
         {"mac": "00:16:53:46:be:aa", "port": "A"},
     ],
-    # Positioned instruments such as SARON are configured below. Keeping the
-    # name here lets the GUI continue to show its connection status.
-    "GAMELAN": [],
-    "CHIME": [],
+
+    # "CHIME": [
+    #     {"mac": "00:16:53:46:be:aa", "port": "A"},
+    # ],
+    
+    "GAMELAN 1": [
+        {"mac": "00:16:53:41:90:6e", "port": "A"},
+        {"mac": "00:16:53:41:90:6e", "port": "B"},
+        {"mac": "00:16:53:41:90:6e", "port": "C"},
+    ],
+
+    "GAMELAN 2": [
+        {"mac": "00:16:53:4b:b2:e0", "port": "A"},
+        {"mac": "00:16:53:4b:b2:e0", "port": "B"},
+        {"mac": "00:16:53:4b:b2:e0", "port": "C"},
+    ],
+
+    "GAMELAN 3": [
+        {"mac": "00:16:53:48:9b:39", "port": "A"},
+        {"mac": "00:16:53:48:9b:39", "port": "B"},
+        {"mac": "00:16:53:48:9b:39", "port": "C"},
+    ],
+
     "GENDANG": [
         {"mac": "00:16:53:43:d6:4a", "port": "A"},
+        {"mac": "00:16:53:43:d6:4a", "port": "D"},
     ],
-    # Add more instruments here as needed, e.g.:
-    # "KENONG": [{"mac": "00:16:53:XX:XX:XX", "port": "B"}],
 }
 
 
@@ -36,8 +54,8 @@ POSITIONED_INSTRUMENTS = {
                 # PLACEHOLDER - replace with the right EV3 brick's real MAC
                 # address (Settings > Brick Info > ID on that brick).
                 # Ports assumed to match the left pair's layout (A/D).
-                "controller": {"mac": "00:16:53:XX:XX:XX", "port": "A"},
-                "hitter": {"mac": "00:16:53:XX:XX:XX", "port": "D"},
+                "controller": {"mac": "00:16:53:4d:46:72", "port": "A"},
+                "hitter": {"mac": "00:16:53:4d:46:72", "port": "D"},
                 "hitter_direction": "clockwise",
             },
         },
