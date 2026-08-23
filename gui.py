@@ -158,6 +158,18 @@ class EV3App(ctk.CTk):
             )
             btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
 
+        # Prominent Stop Song button
+        self.stop_song_button = ctk.CTkButton(
+            song_frame,
+            text="⏹ Stop Song",
+            fg_color="#ef4444",
+            hover_color="#dc2626",
+            command=self.stop_song,
+        )
+        self.stop_song_button.grid(
+            row=2, column=0, columnspan=len(self.song_list), padx=10, pady=(0, 10), sticky="ew"
+        )
+
         # Instrument Control Section
         instrument_frame = ctk.CTkFrame(self.content_frame)
         instrument_frame.pack(padx=10, pady=12, fill="x")
@@ -244,14 +256,13 @@ class EV3App(ctk.CTk):
             self._health_check_running = True
             threading.Thread(target=self._health_check_worker, daemon=True).start()
 
-        self.after(5000, self.background_health_check)  # checks every 5 seconds
+        self.after(15000, self.background_health_check)  # checks every 15 seconds
 
     def _health_check_worker(self):
         self.ev3.health_check()
         self._health_check_running = False
 
     def handle_voice_command(self, command):
-        # Actions that aren't instruments or songs - they call a method directly
         voice_actions = {
             "connect": self.connect_ev3,
             "disconnect": self.disconnect_ev3,
@@ -259,8 +270,12 @@ class EV3App(ctk.CTk):
             "check battery": self.check_battery,
             "stop listening": self.stop_voice_command,
             "stop voice": self.stop_voice_command,
+            "stop": self.stop_song,
             "stop song": self.stop_song,
             "stop music": self.stop_song,
+            "stop playing": self.stop_song,
+            "stop all": self.stop_song,
+            "pause": self.stop_song,
             "start gesture": self.start_gesture_command,
             "stop gesture": self.stop_gesture_command,
         }
@@ -355,4 +370,6 @@ class EV3App(ctk.CTk):
     def stop_song(self):
         if self.current_stop_event is not None:
             self.current_stop_event.set()
-        print("Stop requested.")
+        if self.ev3.connected:
+            self.ev3.stop_all_motors()
+        print("Stop requested.")

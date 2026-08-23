@@ -8,6 +8,17 @@
 INSTRUMENTS = {
     "GONG": [
         {"mac": "00:16:53:46:be:aa", "port": "A"},
+        {"mac": "00:16:53:46:be:aa", "port": "B"},
+    ],
+
+    # "GENDANG": [
+    #     {"mac": "00:16:53:46:be:aa", "port": "C"},
+    #     {"mac": "00:16:53:46:be:aa", "port": "D"},
+    # ],
+
+    "GENDANG": [
+        {"mac": "00:16:53:43:d6:4a", "port": "A"},
+        {"mac": "00:16:53:43:d6:4a", "port": "D"},
     ],
 
     # "CHIME": [
@@ -32,10 +43,6 @@ INSTRUMENTS = {
         {"mac": "00:16:53:48:9b:39", "port": "C"},
     ],
 
-    "GENDANG": [
-        {"mac": "00:16:53:43:d6:4a", "port": "A"},
-        {"mac": "00:16:53:43:d6:4a", "port": "D"},
-    ],
 }
 
 
@@ -47,7 +54,7 @@ POSITIONED_INSTRUMENTS = {
         "pairs": {
             "left": {
                 "controller": {"mac": "00:16:53:41:95:2e", "port": "A"},
-                "hitter": {"mac": "00:16:53:41:95:2e", "port": "D"},
+                "hitter": {"mac": "00:16:53:41:95:2e", "port": "B"},
                 "hitter_direction": "clockwise",
             },
             "right": {
@@ -57,6 +64,9 @@ POSITIONED_INSTRUMENTS = {
                 "controller": {"mac": "00:16:53:4d:46:72", "port": "A"},
                 "hitter": {"mac": "00:16:53:4d:46:72", "port": "D"},
                 "hitter_direction": "clockwise",
+                # "controller": {"mac": "00:16:53:41:95:2e", "port": "C"},
+                # "hitter": {"mac": "00:16:53:41:95:2e", "port": "D"},
+                # "hitter_direction": "clockwise",
             },
         },
         # Dummy calibration layout. Replace these note labels and angles with

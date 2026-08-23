@@ -1,3 +1,4 @@
+import queue
 import threading
 import time
 import ev3_dc as ev3
@@ -29,6 +30,8 @@ class EV3:
         self._positioned_instruments = {}  # instrument -> configured controller/hitter pairs
         self._status = {}        # instrument name -> True/False (fully usable or not)
         self._instruments_by_mac = {}  # mac -> list of instrument names that use it
+        self._brick_queues = {}          # mac -> queue.Queue (one per connected brick)
+        self._brick_workers = {}         # mac -> Thread (persistent worker per brick)
 
     def connect(self):
         print("Connecting to EV3 bricks...")
@@ -54,6 +57,21 @@ class EV3:
             except Exception as e:
                 self._brick_status[mac] = False
                 print(f"  Brick {mac}: FAILED to connect - {e}")
+
+        # Start one persistent worker thread per connected brick for real-time manual commands.
+        for mac in self._bricks:
+            if self._brick_status.get(mac, False):
+                q = queue.Queue()
+                self._brick_queues[mac] = q
+                t = threading.Thread(
+                    target=self._brick_worker,
+                    args=(mac, q),
+                    daemon=True,
+                    name=f"ev3-worker-{mac}",
+                )
+                t.start()
+                self._brick_workers[mac] = t
+                print(f"  Brick {mac}: worker thread started")
 
         # Step 2: create Motor object(s) for each instrument, using shared brick connections
         self._instruments_by_mac = {}
@@ -155,6 +173,16 @@ class EV3:
 
     def disconnect(self):
         print("Disconnecting all EV3 bricks...")
+
+        # Stop all running motors/timelines first
+        self.stop_all_motors()
+
+        # Signal each worker to exit and wait for it to drain its queue.
+        for mac, q in self._brick_queues.items():
+            q.put(None)  # sentinel: worker exits its loop on None
+        for mac, t in self._brick_workers.items():
+            t.join(timeout=2.0)
+
         for mac, brick in self._bricks.items():
             try:
                 brick.__del__()
@@ -168,7 +196,73 @@ class EV3:
         self._motor_locks = {}
         self._positioned_instruments = {}
         self._status = {}
+        self._brick_queues = {}
+        self._brick_workers = {}
         self.connected = False
+
+    def _brick_worker(self, mac, q):
+        """
+        Persistent worker thread for real-time manual commands on a single EV3 brick.
+        """
+        while True:
+            cmd = q.get()
+            if cmd is None:
+                q.task_done()
+                break
+            try:
+                cmd()
+            except Exception as e:
+                print(f"  Worker for brick {mac}: command failed - {e}")
+            finally:
+                q.task_done()
+
+    def play_timeline(self, mac, bytecode):
+        """
+        Sends and executes a compiled on-brick timeline direct command.
+        Uses ASYNC mode so the Bluetooth socket is not blocked waiting for reply.
+        """
+        if not self._brick_status.get(mac, False):
+            print(f"Cannot play timeline on brick {mac}: brick not connected")
+            return False
+        try:
+            brick = self._bricks.get(mac)
+            if brick is None:
+                return False
+            brick.send_direct_cmd(bytecode, local_mem=4, sync_mode=ev3.ASYNC)
+            return True
+        except Exception as e:
+            print(f"Timeline playback error on brick {mac}: {e}")
+            return False
+
+    def stop_all_motors(self):
+        """
+        Broadcasts an immediate stop and program termination command across all connected bricks
+        to abort any running on-brick timelines and actively brake all motors.
+        """
+        stop_ops = b''.join((
+            # Stop running VM program threads in Slot 0, Slot 1 (Direct commands), Slot 2
+            ev3.opProgram_Stop, ev3.LCX(0),
+            ev3.opProgram_Stop, ev3.LCX(1),
+            ev3.opProgram_Stop, ev3.LCX(2),
+            # Brake and stop all motor outputs on ports A, B, C, D
+            ev3.opOutput_Stop, ev3.LCX(0), ev3.LCX(15), ev3.LCX(1),
+        ))
+        for mac, brick in self._bricks.items():
+            if not self._brick_status.get(mac, False):
+                continue
+            try:
+                # Clear pending commands in worker queue if any
+                q = self._brick_queues.get(mac)
+                if q is not None:
+                    while not q.empty():
+                        try:
+                            q.get_nowait()
+                            q.task_done()
+                        except queue.Empty:
+                            break
+                brick.send_direct_cmd(stop_ops, sync_mode=ev3.ASYNC)
+            except Exception as e:
+                print(f"Error stopping brick {mac}: {e}")
 
     def is_instrument_connected(self, instrument):
         return self._status.get(instrument, False)
@@ -187,125 +281,6 @@ class EV3:
         note_config = definition.get("notes", {}).get(note)
         return note_config.get("pair") if note_config else None
 
-    def prepare_positioned_note(self, instrument, note, hit_degrees=None,
-                                hit_speed=None, return_degrees=None):
-        """
-        Begin moving a positioned instrument's controller to its note angle.
-        The returned request is triggered later by trigger_positioned_note(),
-        allowing songs to prepare the controller before the audible hit beat.
-        """
-        if not self._status.get(instrument, False):
-            print(f"Cannot prepare '{instrument}': not connected")
-            return None
-
-        state = self._positioned_instruments.get(instrument)
-        if state is None:
-            print(f"Cannot prepare '{instrument}': not a positioned instrument")
-            return None
-        note_config = state["notes"].get(note)
-        if note_config is None:
-            print(f"Cannot prepare '{instrument}': unknown note '{note}'")
-            return None
-
-        pair_name = note_config["pair"]
-        pair = state["pairs"].get(pair_name)
-        if pair is None:
-            print(f"Cannot prepare '{instrument}' note '{note}': pair '{pair_name}' is unavailable")
-            return None
-
-        defaults = state["defaults"]
-        hit_degrees = defaults["hit_degrees"] if hit_degrees is None else hit_degrees
-        hit_speed = defaults["hit_speed"] if hit_speed is None else hit_speed
-        return_degrees = hit_degrees if return_degrees is None else return_degrees
-        request = {
-            "ready": threading.Event(),
-            "hit": threading.Event(),
-            "cancel": threading.Event(),
-            "instrument": instrument,
-            "note": note,
-            "pair": pair_name,
-        }
-
-        def _prepare_and_strike():
-            controller, controller_mac = pair["controller"]
-            hitter, hitter_mac = pair["hitter"]
-            try:
-                with pair["lock"]:
-                    controller.start_move_to(
-                        note_config["angle"],
-                        speed=defaults["position_speed"],
-                        brake=True,
-                    )
-                    while controller.busy:
-                        time.sleep(0.01)
-                    request["ready"].set()
-
-                    # The song signals this event exactly at the note's beat.
-                    # Polling also lets a stopped song release a prepared pair.
-                    while not request["hit"].wait(0.05):
-                        if request["cancel"].is_set():
-                            return
-                    if request["cancel"].is_set():
-                        return
-                    hitter_direction = pair["hitter_direction"]
-                    direction_multiplier = {
-                        "clockwise": 1,
-                        "counterclockwise": -1,
-                    }.get(hitter_direction)
-                    if direction_multiplier is None:
-                        raise ValueError(
-                            f"invalid hitter direction '{hitter_direction}'"
-                        )
-                    hitter.start_move_by(
-                        hit_degrees * direction_multiplier,
-                        speed=hit_speed,
-                        brake=True,
-                    )
-                    while hitter.busy:
-                        time.sleep(0.01)
-                    hitter.start_move_by(
-                        -return_degrees * direction_multiplier,
-                        speed=hit_speed,
-                        brake=True,
-                    )
-                    while hitter.busy:
-                        time.sleep(0.01)
-            except Exception as e:
-                request["ready"].set()
-                self._brick_status[controller_mac] = False
-                self._brick_status[hitter_mac] = False
-                self._status[instrument] = False
-                print(f"  {instrument} {pair_name}: positioned strike failed - {e}")
-
-        threading.Thread(target=_prepare_and_strike, daemon=True).start()
-        return request
-
-    def trigger_positioned_note(self, request):
-        """Trigger a previously prepared positioned note at its scheduled beat."""
-        if request is not None:
-            request["hit"].set()
-
-    def cancel_positioned_note(self, request):
-        """Release a prepared pair without striking it."""
-        if request is not None:
-            request["cancel"].set()
-
-    def play_positioned_note(self, instrument, note, hit_degrees=None,
-                             hit_speed=None, return_degrees=None):
-        """Prepare and strike one positioned note for manual controls."""
-        request = self.prepare_positioned_note(
-            instrument, note, hit_degrees, hit_speed, return_degrees,
-        )
-        if request is None:
-            return False
-
-        def _trigger_when_ready():
-            request["ready"].wait()
-            self.trigger_positioned_note(request)
-
-        threading.Thread(target=_trigger_when_ready, daemon=True).start()
-        return True
-
     def send_command(
         self,
         command,
@@ -315,37 +290,16 @@ class EV3:
         direction="clockwise",
         degrees=None,
         return_degrees=None,
+        degree=None,
     ):
         """
-        Fires motor(s) for this instrument.
-        - If key is None: fires ALL motors for this instrument together
-          (good for simple instruments, or manual "hit everything" testing).
-        - If key is given (an index into that instrument's motor list):
-          fires ONLY that specific motor - use this for big instruments
-          where each motor covers a different key/section (e.g. SARON key 0, 1, 2...).
-        - degrees optionally moves each motor by a fixed number of degrees.
-          It then immediately returns the motor to its starting position. Use
-          return_degrees to calibrate a different return distance; otherwise
-          the forward degree value is reused. When degrees is omitted,
-          duration-based movement is used as before.
-        - direction may be "clockwise" or "counterclockwise". It applies to
-          both movement modes and defaults to "clockwise" so existing callers
-          keep their current behavior.
-        Returns True if sent, False if unavailable.
+        Fires motor(s) for this instrument (manual UI buttons, voice commands, gestures).
+        - For standard instruments (Gong, Gendang, Gamelan): fires assigned motors.
+        - For positioned instruments (Saron): directly fires hitter motor(s) for an immediate,
+          responsive manual strike test matching all other instrument buttons.
         """
-        if self.is_positioned_instrument(command):
-            notes = POSITIONED_INSTRUMENTS[command]["notes"]
-            default_note = next(iter(notes), None)
-            if default_note is None:
-                print(f"Cannot send '{command}': no notes are configured")
-                return False
-            return self.play_positioned_note(
-                command,
-                default_note,
-                hit_degrees=degrees,
-                hit_speed=speed,
-                return_degrees=return_degrees,
-            )
+        if degrees is None and degree is not None:
+            degrees = degree
 
         if not self._status.get(command, False):
             print(f"Cannot send '{command}': not connected")
@@ -361,6 +315,62 @@ class EV3:
             return False
         motor_direction = direction_map[direction]
 
+        # Handle SARON (Positioned Instruments) manual hit: directly strike the hitter motor(s)
+        if self.is_positioned_instrument(command):
+            state = self._positioned_instruments.get(command, {})
+            pairs = state.get("pairs", {})
+            if not pairs:
+                print(f"Cannot send '{command}': no active pairs available")
+                return False
+
+            defaults = state.get("defaults", {})
+            eff_hit_degrees = defaults.get("hit_degrees", 90) if degrees is None else degrees
+            eff_hit_speed = defaults.get("hit_speed", 50) if speed == 50 else speed
+            eff_return_degrees = eff_hit_degrees if return_degrees is None else return_degrees
+
+            # Select target pair(s)
+            pair_list = list(pairs.values())
+            if key is not None and 0 <= key < len(pair_list):
+                target_pairs = [pair_list[key]]
+            else:
+                target_pairs = pair_list
+
+            for p in target_pairs:
+                hitter, hitter_mac = p["hitter"]
+                h_lock = self._motor_locks.get(id(hitter))
+                h_dir_str = p.get("hitter_direction", "clockwise")
+                h_mult = 1 if h_dir_str == "clockwise" else -1
+
+                def _run_hitter(h=hitter, mac=hitter_mac, lk=h_lock, mult=h_mult):
+                    try:
+                        with lk:
+                            h.start_move_by(
+                                eff_hit_degrees * mult,
+                                speed=eff_hit_speed,
+                                brake=True,
+                            )
+                            h_time = max(0.04, abs(eff_hit_degrees) / (max(10, eff_hit_speed) * 8.0))
+                            time.sleep(h_time)
+                            h.start_move_by(
+                                -eff_return_degrees * mult,
+                                speed=eff_hit_speed,
+                                brake=True,
+                            )
+                            ret_time = max(0.04, abs(eff_return_degrees) / (max(10, eff_hit_speed) * 8.0))
+                            time.sleep(ret_time)
+                    except Exception as e:
+                        print(f"  {command} hitter error on {mac}: {e}")
+
+                q = self._brick_queues.get(hitter_mac)
+                if q is not None:
+                    q.put(_run_hitter)
+                else:
+                    threading.Thread(target=_run_hitter, daemon=True).start()
+
+            print(f"Sent manual strike: {command} ({len(target_pairs)} hitter(s))")
+            return True
+
+        # Standard instruments (Gong, Gendang, Gamelan, etc.)
         if degrees is not None:
             if not isinstance(degrees, int) or isinstance(degrees, bool) or degrees <= 0:
                 print(f"Cannot send '{command}': degrees must be a positive integer")
@@ -387,8 +397,6 @@ class EV3:
 
         def _run_motor(motor, mac, motor_lock):
             try:
-                # Keep a degree-based strike together so its return completes
-                # before another command acquires this motor's lock.
                 with motor_lock:
                     if degrees is None:
                         motor.start_move_for(
@@ -396,39 +404,40 @@ class EV3:
                             speed=speed,
                             direction=motor_direction,
                         )
+                        time.sleep(duration)
                     else:
                         motor.start_move_by(
                             movement_degrees,
                             speed=speed,
                             brake=True,
                         )
-                        while motor.busy:
-                            time.sleep(0.01)
+                        eff_speed = max(10, speed)
+                        move_time = max(0.04, abs(movement_degrees) / (eff_speed * 8.0))
+                        time.sleep(move_time)
                         motor.start_move_by(
                             return_movement_degrees,
                             speed=speed,
                             brake=True,
                         )
-                        while motor.busy:
-                            time.sleep(0.01)
+                        ret_time = max(0.04, abs(return_movement_degrees) / (eff_speed * 8.0))
+                        time.sleep(ret_time)
             except Exception as e:
-                # A motor command failing mid-performance usually means that
-                # brick's connection dropped - mark BOTH the specific brick
-                # and this instrument as down, so status checks (and battery
-                # checks, which skip down bricks) reflect it correctly.
                 print(f"  {command}: motor command failed on brick {mac} - {e}")
                 self._brick_status[mac] = False
                 self._status[command] = False
 
-        threads = []
         for motor, mac in target_motors:
             motor_lock = self._motor_locks.get(id(motor))
             if motor_lock is None:
                 print(f"Cannot send '{command}': motor lock unavailable")
                 return False
-            t = threading.Thread(target=_run_motor, args=(motor, mac, motor_lock), daemon=True)
-            threads.append(t)
-            t.start()
+            def _enqueue(m=motor, a=mac, lk=motor_lock):
+                _run_motor(m, a, lk)
+            q = self._brick_queues.get(mac)
+            if q is not None:
+                q.put(_enqueue)
+            else:
+                threading.Thread(target=_enqueue, daemon=True).start()
 
         label = f"{command}[{key}]" if key is not None else command
         if degrees is not None:
@@ -439,8 +448,6 @@ class EV3:
     def get_battery_levels(self):
         """
         Returns a dict of {mac: percentage} for each currently connected brick.
-        Bricks already known to be down are skipped (marked None) instead of
-        being queried, since querying a dead connection can hang.
         """
         levels = {}
         for mac, brick in self._bricks.items():
@@ -457,24 +464,13 @@ class EV3:
 
     def health_check(self):
         """
-        Actively checks every brick that's CURRENTLY marked as connected,
-        even if nothing has tried to send it a command recently. This is
-        what catches a brick that has silently gone offline while idle
-        (e.g. before it's ever been triggered) - without this, the status
-        grid would keep showing it as "Connected" until something finally
-        tried to use it and failed.
-
-        Should be called periodically in the background (see gui.py),
-        NOT while a song is actively playing, since it sends its own
-        Bluetooth traffic and could interfere with timing-sensitive
-        motor commands.
+        Actively checks every brick currently marked as connected.
         """
         for mac, brick in self._bricks.items():
             if not self._brick_status.get(mac, False):
-                continue  # already known to be down, no need to re-check
-
+                continue
             try:
-                _ = brick.battery  # lightweight query, just to confirm the brick still responds
+                _ = brick.battery
             except Exception as e:
                 print(f"  Health check: brick {mac} is no longer responding - {e}")
                 self._brick_status[mac] = False
