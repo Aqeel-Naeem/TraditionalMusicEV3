@@ -11,19 +11,14 @@ INSTRUMENTS = {
         {"mac": "00:16:53:46:be:aa", "port": "B"},
     ],
 
-    # "GENDANG": [
-    #     {"mac": "00:16:53:46:be:aa", "port": "C"},
-    #     {"mac": "00:16:53:46:be:aa", "port": "D"},
-    # ],
+    "CHIME": [
+        {"mac": "00:16:53:46:be:aa", "port": "D"},
+    ],
 
     "GENDANG": [
         {"mac": "00:16:53:43:d6:4a", "port": "A"},
         {"mac": "00:16:53:43:d6:4a", "port": "D"},
     ],
-
-    # "CHIME": [
-    #     {"mac": "00:16:53:46:be:aa", "port": "A"},
-    # ],
     
     "GAMELAN 1": [
         {"mac": "00:16:53:41:90:6e", "port": "A"},
@@ -54,19 +49,19 @@ POSITIONED_INSTRUMENTS = {
         "pairs": {
             "left": {
                 "controller": {"mac": "00:16:53:41:95:2e", "port": "A"},
-                "hitter": {"mac": "00:16:53:41:95:2e", "port": "B"},
+                "hitter": [
+                    {"mac": "00:16:53:41:95:2e", "port": "B"},
+                    {"mac": "00:16:53:41:95:2e", "port": "C"},
+                ],
                 "hitter_direction": "clockwise",
             },
             "right": {
-                # PLACEHOLDER - replace with the right EV3 brick's real MAC
-                # address (Settings > Brick Info > ID on that brick).
-                # Ports assumed to match the left pair's layout (A/D).
                 "controller": {"mac": "00:16:53:4d:46:72", "port": "A"},
-                "hitter": {"mac": "00:16:53:4d:46:72", "port": "D"},
+                "hitter": [
+                    {"mac": "00:16:53:4d:46:72", "port": "B"},
+                    {"mac": "00:16:53:4d:46:72", "port": "C"}
+                ],
                 "hitter_direction": "clockwise",
-                # "controller": {"mac": "00:16:53:41:95:2e", "port": "C"},
-                # "hitter": {"mac": "00:16:53:41:95:2e", "port": "D"},
-                # "hitter_direction": "clockwise",
             },
         },
         # Dummy calibration layout. Replace these note labels and angles with
