@@ -39,13 +39,13 @@ class EV3:
 
         # Step 1: connect to each unique brick MAC only once
         unique_macs = {loc["mac"] for locations in INSTRUMENTS.values() for loc in locations}
-        unique_macs.update(
-            location["mac"]
-            for definition in POSITIONED_INSTRUMENTS.values()
-            for pair in definition["pairs"].values()
-            for location in (pair["controller"], pair["hitter"])
-            if location.get("mac")
-        )
+        for definition in POSITIONED_INSTRUMENTS.values():
+            for pair in definition["pairs"].values():
+                hitter_cfg = pair["hitter"]
+                hitter_locations = hitter_cfg if isinstance(hitter_cfg, list) else [hitter_cfg]
+                for location in (pair["controller"], *hitter_locations):
+                    if location.get("mac"):
+                        unique_macs.add(location["mac"])
 
         for mac in unique_macs:
             try:
@@ -119,14 +119,17 @@ class EV3:
             for pair_name, pair_config in definition["pairs"].items():
                 controller_config = pair_config["controller"]
                 hitter_config = pair_config["hitter"]
+                # "hitter" may be a single location dict or a list of them
+                # (e.g. SARON's 2 hit motors on the same brick).
+                hitter_locations = hitter_config if isinstance(hitter_config, list) else [hitter_config]
                 controller_mac = controller_config.get("mac")
-                hitter_mac = hitter_config.get("mac")
+                hitter_macs = [loc.get("mac") for loc in hitter_locations]
 
-                if not controller_mac or not hitter_mac:
+                if not controller_mac or not all(hitter_macs):
                     print(f"  {instrument} {pair_name}: pending configuration")
                     continue
                 if (not self._brick_status.get(controller_mac, False)
-                        or not self._brick_status.get(hitter_mac, False)):
+                        or not all(self._brick_status.get(mac, False) for mac in hitter_macs)):
                     print(f"  {instrument} {pair_name}: unavailable (brick not connected)")
                     continue
 
@@ -135,19 +138,24 @@ class EV3:
                         PORT_MAP[controller_config["port"]],
                         ev3_obj=self._bricks[controller_mac],
                     )
-                    hitter = ev3.Motor(
-                        PORT_MAP[hitter_config["port"]],
-                        ev3_obj=self._bricks[hitter_mac],
-                    )
                     self._motor_locks[id(controller)] = threading.Lock()
-                    self._motor_locks[id(hitter)] = threading.Lock()
+
+                    hitters = []
+                    for loc in hitter_locations:
+                        hitter_motor = ev3.Motor(
+                            PORT_MAP[loc["port"]],
+                            ev3_obj=self._bricks[loc["mac"]],
+                        )
+                        self._motor_locks[id(hitter_motor)] = threading.Lock()
+                        hitters.append((hitter_motor, loc["mac"]))
+
                     pairs[pair_name] = {
                         "controller": (controller, controller_mac),
-                        "hitter": (hitter, hitter_mac),
+                        "hitter": hitters,  # list of (motor, mac) tuples
                         "hitter_direction": pair_config.get("hitter_direction", "clockwise"),
                         "lock": threading.Lock(),
                     }
-                    for mac in {controller_mac, hitter_mac}:
+                    for mac in {controller_mac, *hitter_macs}:
                         self._instruments_by_mac.setdefault(mac, [])
                         if instrument not in self._instruments_by_mac[mac]:
                             self._instruments_by_mac[mac].append(instrument)
@@ -336,38 +344,55 @@ class EV3:
                 target_pairs = pair_list
 
             for p in target_pairs:
-                hitter, hitter_mac = p["hitter"]
-                h_lock = self._motor_locks.get(id(hitter))
                 h_dir_str = p.get("hitter_direction", "clockwise")
                 h_mult = 1 if h_dir_str == "clockwise" else -1
 
-                def _run_hitter(h=hitter, mac=hitter_mac, lk=h_lock, mult=h_mult):
-                    try:
-                        with lk:
-                            h.start_move_by(
-                                eff_hit_degrees * mult,
-                                speed=eff_hit_speed,
-                                brake=True,
-                            )
+                # Hitters that share a brick must fire together as ONE queued
+                # job. Queuing them as separate jobs on that brick's single
+                # worker thread would run one hitter's full hit-and-return
+                # cycle to completion before the next one even starts.
+                by_mac = {}
+                for hitter, hitter_mac in p["hitter"]:
+                    by_mac.setdefault(hitter_mac, []).append(hitter)
+
+                for hitter_mac, brick_hitters in by_mac.items():
+                    def _run_hitters(hs=brick_hitters, mac=hitter_mac, mult=h_mult):
+                        locks = [self._motor_locks.get(id(h)) for h in hs]
+                        for lk in locks:
+                            if lk is not None:
+                                lk.acquire()
+                        try:
+                            for h in hs:
+                                h.start_move_by(
+                                    eff_hit_degrees * mult,
+                                    speed=eff_hit_speed,
+                                    brake=True,
+                                )
                             h_time = max(0.04, abs(eff_hit_degrees) / (max(10, eff_hit_speed) * 8.0))
                             time.sleep(h_time)
-                            h.start_move_by(
-                                -eff_return_degrees * mult,
-                                speed=eff_hit_speed,
-                                brake=True,
-                            )
+                            for h in hs:
+                                h.start_move_by(
+                                    -eff_return_degrees * mult,
+                                    speed=eff_hit_speed,
+                                    brake=True,
+                                )
                             ret_time = max(0.04, abs(eff_return_degrees) / (max(10, eff_hit_speed) * 8.0))
                             time.sleep(ret_time)
-                    except Exception as e:
-                        print(f"  {command} hitter error on {mac}: {e}")
+                        except Exception as e:
+                            print(f"  {command} hitter error on {mac}: {e}")
+                        finally:
+                            for lk in locks:
+                                if lk is not None:
+                                    lk.release()
 
-                q = self._brick_queues.get(hitter_mac)
-                if q is not None:
-                    q.put(_run_hitter)
-                else:
-                    threading.Thread(target=_run_hitter, daemon=True).start()
+                    q = self._brick_queues.get(hitter_mac)
+                    if q is not None:
+                        q.put(_run_hitters)
+                    else:
+                        threading.Thread(target=_run_hitters, daemon=True).start()
 
-            print(f"Sent manual strike: {command} ({len(target_pairs)} hitter(s))")
+            total_hitters = sum(len(p["hitter"]) for p in target_pairs)
+            print(f"Sent manual strike: {command} ({len(target_pairs)} pair(s), {total_hitters} hitter motor(s))")
             return True
 
         # Standard instruments (Gong, Gendang, Gamelan, etc.)

@@ -32,36 +32,36 @@ SONGS = {
         {"instrument": "SARON", "note": "Saron 7", "beat": 9.0, "hit_degrees": 90, "hit_speed": 60},
         {"instrument": "SARON", "note": "Saron 8", "beat": 10.5, "hit_degrees": 90, "hit_speed": 60},
 
-        # --- 3. GENDANG: Individual Keys ---
-        {"instrument": "GENDANG", "key": 0, "beat": 12.0, "degrees": 90, "speed": 60},
-        {"instrument": "GENDANG", "key": 1, "beat": 13.5, "degrees": 90, "speed": 60},
+        # # --- 3. GENDANG: Individual Keys ---
+        # {"instrument": "GENDANG", "key": 0, "beat": 12.0, "degrees": 90, "speed": 60},
+        # {"instrument": "GENDANG", "key": 1, "beat": 13.5, "degrees": 90, "speed": 60},
 
-        # --- 4. GONG: Individual Keys ---
-        {"instrument": "GONG", "key": 0, "beat": 15.0, "degrees": 90, "speed": 60},
-        {"instrument": "GONG", "key": 1, "beat": 16.5, "degrees": 90, "speed": 60},
+        # # --- 4. GONG: Individual Keys ---
+        # {"instrument": "GONG", "key": 0, "beat": 15.0, "degrees": 90, "speed": 60},
+        # {"instrument": "GONG", "key": 1, "beat": 16.5, "degrees": 90, "speed": 60},
 
-        # --- 5. GAMELAN 1: Ports A, B, C ---
-        {"instrument": "GAMELAN 1", "key": 0, "beat": 18.0, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 1", "key": 1, "beat": 19.5, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 1", "key": 2, "beat": 21.0, "degrees": 90, "speed": 60},
+        # # --- 5. GAMELAN 1: Ports A, B, C ---
+        # {"instrument": "GAMELAN 1", "key": 0, "beat": 18.0, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 1", "key": 1, "beat": 19.5, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 1", "key": 2, "beat": 21.0, "degrees": 90, "speed": 60},
 
-        # --- 6. GAMELAN 2: Ports A, B, C ---
-        {"instrument": "GAMELAN 2", "key": 0, "beat": 22.5, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 2", "key": 1, "beat": 24.0, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 2", "key": 2, "beat": 25.5, "degrees": 90, "speed": 60},
+        # # --- 6. GAMELAN 2: Ports A, B, C ---
+        # {"instrument": "GAMELAN 2", "key": 0, "beat": 22.5, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 2", "key": 1, "beat": 24.0, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 2", "key": 2, "beat": 25.5, "degrees": 90, "speed": 60},
 
-        # --- 7. GAMELAN 3: Ports A, B, C ---
-        {"instrument": "GAMELAN 3", "key": 0, "beat": 27.0, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 3", "key": 1, "beat": 28.5, "degrees": 90, "speed": 60},
-        {"instrument": "GAMELAN 3", "key": 2, "beat": 30.0, "degrees": 90, "speed": 60},
+        # # --- 7. GAMELAN 3: Ports A, B, C ---
+        # {"instrument": "GAMELAN 3", "key": 0, "beat": 27.0, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 3", "key": 1, "beat": 28.5, "degrees": 90, "speed": 60},
+        # {"instrument": "GAMELAN 3", "key": 2, "beat": 30.0, "degrees": 90, "speed": 60},
 
-        # --- 8. SIMULTANEOUS ENSEMBLE HIT (Sync Test) ---
-        {"instrument": "SARON", "note": "Saron 3", "beat": 32.0, "hit_degrees": 90, "hit_speed": 70},
-        {"instrument": "GENDANG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        {"instrument": "GONG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        {"instrument": "GAMELAN 1", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        {"instrument": "GAMELAN 2", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        {"instrument": "GAMELAN 3", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        # # --- 8. SIMULTANEOUS ENSEMBLE HIT (Sync Test) ---
+        # {"instrument": "SARON", "note": "Saron 3", "beat": 32.0, "hit_degrees": 90, "hit_speed": 70},
+        # {"instrument": "GENDANG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        # {"instrument": "GONG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        # {"instrument": "GAMELAN 1", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        # {"instrument": "GAMELAN 2", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        # {"instrument": "GAMELAN 3", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
     ],
 
     "Rasa Sayang (10s Demo)": [
@@ -192,11 +192,26 @@ def compile_song_timelines(song_notes, tempo=1.0):
                 continue
             c_mac = pair_cfg["controller"].get("mac")
             c_port_str = pair_cfg["controller"].get("port")
-            h_port_str = pair_cfg["hitter"].get("port")
-            if not c_mac or not c_port_str or not h_port_str:
+            if not c_mac or not c_port_str:
                 continue
             c_port = PORT_MAP.get(c_port_str)
-            h_port = PORT_MAP.get(h_port_str)
+
+            # "hitter" may be a single location dict or a list of them
+            # (e.g. SARON's 2 hit motors on the same brick). Combine every
+            # hitter that shares the controller's brick into one port
+            # bitmask so a single opOutput_Start/opOutput_Ready pair fires
+            # and waits on all of them at once (true simultaneous strike).
+            hitter_cfg = pair_cfg["hitter"]
+            hitter_locations = hitter_cfg if isinstance(hitter_cfg, list) else [hitter_cfg]
+            h_port = 0
+            for loc in hitter_locations:
+                if loc.get("mac") != c_mac:
+                    continue
+                loc_port = PORT_MAP.get(loc.get("port"))
+                if loc_port:
+                    h_port |= loc_port
+            if not h_port:
+                continue
             defaults = p_def.get("defaults", {})
 
             hit_deg = note.get("hit_degrees", defaults.get("hit_degrees", 90))
@@ -259,6 +274,14 @@ def compile_song_timelines(song_notes, tempo=1.0):
     for mac, evts in brick_events.items():
         ops = []
         last_time_ms = 0
+        # Tracks each controller port's last-commanded absolute angle.
+        # opOutput_Step_Speed is a RELATIVE "rotate by N degrees" command,
+        # not a "move to absolute angle" command, so each controller move
+        # must send the delta from its previous position - not the raw
+        # note angle - or repeated notes accumulate drift every time they
+        # run, eventually driving the motor into a mechanical hard stop.
+        # 0 = wherever the controller physically was when the app connected.
+        controller_positions = {}
 
         for evt in sorted(evts, key=lambda x: x["time_ms"]):
             gap_ms = evt["time_ms"] - last_time_ms
@@ -273,22 +296,38 @@ def compile_song_timelines(song_notes, tempo=1.0):
                 last_time_ms = evt["time_ms"]
 
             if evt["type"] == "positioned":
-                # Step 1: position controller
+                # Step 1: position controller (relative move = delta from
+                # its last commanded position). Direction is encoded in
+                # SPEED's sign, and STEP2 is an unsigned degree magnitude -
+                # matching how ev3_dc's own Motor.start_move_by() builds
+                # this same opcode.
+                port = evt["controller_port"]
+                prev_angle = controller_positions.get(port, 0)
+                target_angle = evt["controller_angle"]
+                delta = target_angle - prev_angle
+                controller_positions[port] = target_angle
+
+                if delta != 0:
+                    c_speed = evt["controller_speed"] if delta >= 0 else -evt["controller_speed"]
+                    c_angle_mag = abs(delta)
+                    ops.extend((
+                        ev3.opOutput_Step_Speed,
+                        ev3.LCX(0),
+                        ev3.LCX(port),
+                        ev3.LCX(c_speed),
+                        ev3.LCX(0),
+                        ev3.LCX(c_angle_mag),
+                        ev3.LCX(0),
+                        ev3.LCX(1),  # Brake
+                        ev3.opOutput_Start,
+                        ev3.LCX(0),
+                        ev3.LCX(port),
+                        ev3.opOutput_Ready,
+                        ev3.LCX(0),
+                        ev3.LCX(port),
+                    ))
+
                 ops.extend((
-                    ev3.opOutput_Step_Speed,
-                    ev3.LCX(0),
-                    ev3.LCX(evt["controller_port"]),
-                    ev3.LCX(evt["controller_speed"]),
-                    ev3.LCX(0),
-                    ev3.LCX(evt["controller_angle"]),
-                    ev3.LCX(0),
-                    ev3.LCX(1),  # Brake
-                    ev3.opOutput_Start,
-                    ev3.LCX(0),
-                    ev3.LCX(evt["controller_port"]),
-                    ev3.opOutput_Ready,
-                    ev3.LCX(0),
-                    ev3.LCX(evt["controller_port"]),
                     # Step 2: strike hitter
                     ev3.opOutput_Step_Speed,
                     ev3.LCX(0),
@@ -374,6 +413,32 @@ def compile_song_timelines(song_notes, tempo=1.0):
                         ev3.LCX(evt["port_mask"]),
                     ))
 
+        # Return every controller used in this song back to its starting
+        # position (0 = wherever it physically was at connect time), so the
+        # stick ends upright/centered instead of wherever the last note
+        # left it, and the next run doesn't need a manual recenter.
+        for port, last_angle in controller_positions.items():
+            if last_angle == 0:
+                continue
+            return_speed = -50 if last_angle >= 0 else 50
+            return_mag = abs(last_angle)
+            ops.extend((
+                ev3.opOutput_Step_Speed,
+                ev3.LCX(0),
+                ev3.LCX(port),
+                ev3.LCX(return_speed),
+                ev3.LCX(0),
+                ev3.LCX(return_mag),
+                ev3.LCX(0),
+                ev3.LCX(1),  # Brake
+                ev3.opOutput_Start,
+                ev3.LCX(0),
+                ev3.LCX(port),
+                ev3.opOutput_Ready,
+                ev3.LCX(0),
+                ev3.LCX(port),
+            ))
+
         # Final safety stop at end of song
         ops.extend((
             ev3.opOutput_Stop,
@@ -419,8 +484,18 @@ def play_song(ev3, song_notes, tempo=1.0, stop_event=None):
     for t in threads:
         t.start()
 
-    # Calculate expected total song duration
-    song_duration = max(note.get("beat", 0.0) for note in song_notes) * tempo + 3.0
+    # Calculate expected total song duration. The compiled timeline's
+    # inter-note waits are based on scheduled beat times only - they don't
+    # account for how long each note's actual motor movement takes, so a
+    # brick can still be genuinely executing after the nominal beat-based
+    # duration has elapsed. Disconnecting (which force-stops mid-movement)
+    # before that happens is unsafe, so this buffer is generous and scales
+    # with note count rather than using a small flat margin.
+    song_duration = (
+        max(note.get("beat", 0.0) for note in song_notes) * tempo
+        + 5.0
+        + 0.5 * len(song_notes)
+    )
     start_time = time.perf_counter()
 
     # Monitor playback and handle interrupt/stop events

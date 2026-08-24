@@ -6,37 +6,37 @@
 # Fill in real MAC addresses as you pair each brick (Settings > Brick Info > ID on the EV3).
 
 INSTRUMENTS = {
-    "GONG": [
-        {"mac": "00:16:53:46:be:aa", "port": "A"},
-        {"mac": "00:16:53:46:be:aa", "port": "B"},
-    ],
+    # "GONG": [
+    #     {"mac": "00:16:53:46:be:aa", "port": "A"},
+    #     {"mac": "00:16:53:46:be:aa", "port": "B"},
+    # ],
 
-    "CHIME": [
-        {"mac": "00:16:53:46:be:aa", "port": "D"},
-    ],
+    # "CHIME": [
+    #     {"mac": "00:16:53:46:be:aa", "port": "D"},
+    # ],
 
-    "GENDANG": [
-        {"mac": "00:16:53:43:d6:4a", "port": "A"},
-        {"mac": "00:16:53:43:d6:4a", "port": "D"},
-    ],
+    # "GENDANG": [
+    #     {"mac": "00:16:53:43:d6:4a", "port": "A"},
+    #     {"mac": "00:16:53:43:d6:4a", "port": "D"},
+    # ],
     
-    "GAMELAN 1": [
-        {"mac": "00:16:53:41:90:6e", "port": "A"},
-        {"mac": "00:16:53:41:90:6e", "port": "B"},
-        {"mac": "00:16:53:41:90:6e", "port": "C"},
-    ],
+    # "GAMELAN 1": [
+    #     {"mac": "00:16:53:41:90:6e", "port": "A"},
+    #     {"mac": "00:16:53:41:90:6e", "port": "B"},
+    #     {"mac": "00:16:53:41:90:6e", "port": "C"},
+    # ],
 
-    "GAMELAN 2": [
-        {"mac": "00:16:53:4b:b2:e0", "port": "A"},
-        {"mac": "00:16:53:4b:b2:e0", "port": "B"},
-        {"mac": "00:16:53:4b:b2:e0", "port": "C"},
-    ],
+    # "GAMELAN 2": [
+    #     {"mac": "00:16:53:4b:b2:e0", "port": "A"},
+    #     {"mac": "00:16:53:4b:b2:e0", "port": "B"},
+    #     {"mac": "00:16:53:4b:b2:e0", "port": "C"},
+    # ],
 
-    "GAMELAN 3": [
-        {"mac": "00:16:53:48:9b:39", "port": "A"},
-        {"mac": "00:16:53:48:9b:39", "port": "B"},
-        {"mac": "00:16:53:48:9b:39", "port": "C"},
-    ],
+    # "GAMELAN 3": [
+    #     {"mac": "00:16:53:48:9b:39", "port": "A"},
+    #     {"mac": "00:16:53:48:9b:39", "port": "B"},
+    #     {"mac": "00:16:53:48:9b:39", "port": "C"},
+    # ],
 
 }
 
@@ -59,7 +59,7 @@ POSITIONED_INSTRUMENTS = {
                 "controller": {"mac": "00:16:53:4d:46:72", "port": "A"},
                 "hitter": [
                     {"mac": "00:16:53:4d:46:72", "port": "B"},
-                    {"mac": "00:16:53:4d:46:72", "port": "C"}
+                    {"mac": "00:16:53:4d:46:72", "port": "C"},
                 ],
                 "hitter_direction": "clockwise",
             },
