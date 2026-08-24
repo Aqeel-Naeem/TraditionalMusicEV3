@@ -39,13 +39,13 @@ class EV3:
 
         # Step 1: connect to each unique brick MAC only once
         unique_macs = {loc["mac"] for locations in INSTRUMENTS.values() for loc in locations}
-        for definition in POSITIONED_INSTRUMENTS.values():
-            for pair in definition["pairs"].values():
-                hitter_cfg = pair["hitter"]
-                hitter_locations = hitter_cfg if isinstance(hitter_cfg, list) else [hitter_cfg]
-                for location in (pair["controller"], *hitter_locations):
-                    if location.get("mac"):
-                        unique_macs.add(location["mac"])
+        unique_macs.update(
+            location["mac"]
+            for definition in POSITIONED_INSTRUMENTS.values()
+            for pair in definition["pairs"].values()
+            for location in [pair["controller"]] + pair["hitter"]
+            if location.get("mac")
+        )
 
         for mac in unique_macs:
             try:
@@ -118,18 +118,24 @@ class EV3:
 
             for pair_name, pair_config in definition["pairs"].items():
                 controller_config = pair_config["controller"]
-                hitter_config = pair_config["hitter"]
-                # "hitter" may be a single location dict or a list of them
-                # (e.g. SARON's 2 hit motors on the same brick).
-                hitter_locations = hitter_config if isinstance(hitter_config, list) else [hitter_config]
+                hitter_configs = pair_config["hitter"]  # list of {mac, port}
                 controller_mac = controller_config.get("mac")
-                hitter_macs = [loc.get("mac") for loc in hitter_locations]
 
-                if not controller_mac or not all(hitter_macs):
+                if not controller_mac or not hitter_configs or any(
+                    not hc.get("mac") for hc in hitter_configs
+                ):
                     print(f"  {instrument} {pair_name}: pending configuration")
                     continue
+
+                hitter_macs = {hc["mac"] for hc in hitter_configs}
+                if len(hitter_macs) != 1:
+                    print(f"  {instrument} {pair_name}: FAILED - all hitter motors "
+                          "must be on the same brick (needed for simultaneous firing)")
+                    continue
+                hitter_mac = hitter_macs.pop()
+
                 if (not self._brick_status.get(controller_mac, False)
-                        or not all(self._brick_status.get(mac, False) for mac in hitter_macs)):
+                        or not self._brick_status.get(hitter_mac, False)):
                     print(f"  {instrument} {pair_name}: unavailable (brick not connected)")
                     continue
 
@@ -140,26 +146,26 @@ class EV3:
                     )
                     self._motor_locks[id(controller)] = threading.Lock()
 
-                    hitters = []
-                    for loc in hitter_locations:
-                        hitter_motor = ev3.Motor(
-                            PORT_MAP[loc["port"]],
-                            ev3_obj=self._bricks[loc["mac"]],
-                        )
-                        self._motor_locks[id(hitter_motor)] = threading.Lock()
-                        hitters.append((hitter_motor, loc["mac"]))
+                    # Combine hitter ports into one mask (e.g. PORT_B + PORT_C) so
+                    # a single low-level command starts both motors at the exact
+                    # same instant - same validated technique as stop_all_motors().
+                    hitter_port_mask = 0
+                    for hc in hitter_configs:
+                        hitter_port_mask += PORT_MAP[hc["port"]]
 
                     pairs[pair_name] = {
                         "controller": (controller, controller_mac),
-                        "hitter": hitters,  # list of (motor, mac) tuples
+                        "hitter_mac": hitter_mac,
+                        "hitter_port_mask": hitter_port_mask,
                         "hitter_direction": pair_config.get("hitter_direction", "clockwise"),
                         "lock": threading.Lock(),
                     }
-                    for mac in {controller_mac, *hitter_macs}:
+                    for mac in {controller_mac, hitter_mac}:
                         self._instruments_by_mac.setdefault(mac, [])
                         if instrument not in self._instruments_by_mac[mac]:
                             self._instruments_by_mac[mac].append(instrument)
-                    print(f"  {instrument} {pair_name}: ready")
+                    print(f"  {instrument} {pair_name}: ready "
+                          f"({len(hitter_configs)} hitter motor(s) combined)")
                 except Exception as e:
                     print(f"  {instrument} {pair_name}: FAILED to set up - {e}")
 
@@ -182,8 +188,20 @@ class EV3:
     def disconnect(self):
         print("Disconnecting all EV3 bricks...")
 
-        # Stop all running motors/timelines first
-        self.stop_all_motors()
+        # NOTE: stop_all_motors() is intentionally NOT called automatically
+        # here anymore. It sends hand-built raw byte-code (opProgram_Stop /
+        # opOutput_Stop) that was never validated against a brick with a
+        # real uploaded .rbf program actively running (Architecture 3) -
+        # this is the suspected cause of crashes occurring specifically
+        # on every disconnect since switching to Architecture 3. Closing
+        # each brick's Bluetooth connection directly (below) is the
+        # already-proven-safe cleanup path and doesn't touch the brick's
+        # running program state at all - a running .rbf program will
+        # simply keep running (or finish on its own) after disconnect,
+        # which is fine for Architecture 3's model. If a genuine
+        # emergency stop is needed later, call stop_all_motors()
+        # explicitly and validate opProgram_Stop's exact byte format
+        # first (see the verbosity=1 ground-truth comparison approach).
 
         # Signal each worker to exit and wait for it to drain its queue.
         for mac, q in self._brick_queues.items():
@@ -244,14 +262,28 @@ class EV3:
 
     def stop_all_motors(self):
         """
-        Broadcasts an immediate stop and program termination command across all connected bricks
-        to abort any running on-brick timelines and actively brake all motors.
+        Broadcasts an immediate hardware-level stop across all connected
+        bricks: actively brakes every motor output (ports A-D), AND
+        terminates the running user program (so a new song can start
+        immediately afterward, without waiting for the old program to
+        wind down on its own).
+
+        The program-stop portion was previously removed after it caused
+        brick crashes - the original code called opProgram_Stop three
+        times (slots 0, 1, 2), including slots that may be reserved for
+        the brick's own system/menu or simply invalid. Verified against
+        a real, confirmed-working reference example, the correct usage
+        is a SINGLE opProgram_Stop call targeting only ev3.USER_SLOT -
+        the same slot ev3_program_runner.py already uses to START
+        programs. This matches "stop what we started," nothing more.
+
+        Still worth a quick real-hardware test (start a program, hit
+        stop, confirm both the motor halts AND the program actually
+        exits promptly) before fully trusting this under time pressure.
         """
         stop_ops = b''.join((
-            # Stop running VM program threads in Slot 0, Slot 1 (Direct commands), Slot 2
-            ev3.opProgram_Stop, ev3.LCX(0),
-            ev3.opProgram_Stop, ev3.LCX(1),
-            ev3.opProgram_Stop, ev3.LCX(2),
+            # Stop the running user program (same slot programs are started in)
+            ev3.opProgram_Stop, ev3.USER_SLOT,
             # Brake and stop all motor outputs on ports A, B, C, D
             ev3.opOutput_Stop, ev3.LCX(0), ev3.LCX(15), ev3.LCX(1),
         ))
@@ -278,16 +310,6 @@ class EV3:
     def is_positioned_instrument(self, instrument):
         """Return whether this instrument uses controller + hitter pairs."""
         return instrument in POSITIONED_INSTRUMENTS
-
-    def get_position_lead_seconds(self, instrument):
-        """Return the configured controller lead time for a positioned instrument."""
-        return POSITIONED_INSTRUMENTS[instrument]["defaults"]["position_lead_seconds"]
-
-    def get_positioned_note_pair(self, instrument, note):
-        """Return the configured pair name for a note, or None if unknown."""
-        definition = POSITIONED_INSTRUMENTS.get(instrument, {})
-        note_config = definition.get("notes", {}).get(note)
-        return note_config.get("pair") if note_config else None
 
     def send_command(
         self,
@@ -344,55 +366,45 @@ class EV3:
                 target_pairs = pair_list
 
             for p in target_pairs:
+                hitter_mac = p["hitter_mac"]
+                port_mask = p["hitter_port_mask"]
+                h_lock = p["lock"]
                 h_dir_str = p.get("hitter_direction", "clockwise")
                 h_mult = 1 if h_dir_str == "clockwise" else -1
+                brick = self._bricks.get(hitter_mac)
 
-                # Hitters that share a brick must fire together as ONE queued
-                # job. Queuing them as separate jobs on that brick's single
-                # worker thread would run one hitter's full hit-and-return
-                # cycle to completion before the next one even starts.
-                by_mac = {}
-                for hitter, hitter_mac in p["hitter"]:
-                    by_mac.setdefault(hitter_mac, []).append(hitter)
+                def _run_hitter(b=brick, mac=hitter_mac, mask=port_mask, lk=h_lock, mult=h_mult):
+                    try:
+                        with lk:
+                            # One combined command per direction: sets each
+                            # port's speed, then a single opOutput_Start using
+                            # the summed port mask fires all hitter motors on
+                            # this pair at the exact same instant (same
+                            # technique as stop_all_motors()'s validated
+                            # multi-port command).
+                            hit_ops = b''.join((
+                                ev3.opOutput_Step_Speed, ev3.LCX(0), ev3.LCX(mask),
+                                ev3.LCX(eff_hit_speed * mult), ev3.LCX(0),
+                                ev3.LCX(eff_hit_degrees), ev3.LCX(0), ev3.LCX(1),
+                                ev3.opOutput_Start, ev3.LCX(0), ev3.LCX(mask),
+                                ev3.opOutput_Ready, ev3.LCX(0), ev3.LCX(mask),
+                                ev3.opOutput_Step_Speed, ev3.LCX(0), ev3.LCX(mask),
+                                ev3.LCX(-eff_return_degrees * mult), ev3.LCX(0),
+                                ev3.LCX(eff_return_degrees), ev3.LCX(0), ev3.LCX(1),
+                                ev3.opOutput_Start, ev3.LCX(0), ev3.LCX(mask),
+                                ev3.opOutput_Ready, ev3.LCX(0), ev3.LCX(mask),
+                            ))
+                            b.send_direct_cmd(hit_ops, sync_mode=ev3.ASYNC)
+                    except Exception as e:
+                        print(f"  {command} hitter error on {mac}: {e}")
 
-                for hitter_mac, brick_hitters in by_mac.items():
-                    def _run_hitters(hs=brick_hitters, mac=hitter_mac, mult=h_mult):
-                        locks = [self._motor_locks.get(id(h)) for h in hs]
-                        for lk in locks:
-                            if lk is not None:
-                                lk.acquire()
-                        try:
-                            for h in hs:
-                                h.start_move_by(
-                                    eff_hit_degrees * mult,
-                                    speed=eff_hit_speed,
-                                    brake=True,
-                                )
-                            h_time = max(0.04, abs(eff_hit_degrees) / (max(10, eff_hit_speed) * 8.0))
-                            time.sleep(h_time)
-                            for h in hs:
-                                h.start_move_by(
-                                    -eff_return_degrees * mult,
-                                    speed=eff_hit_speed,
-                                    brake=True,
-                                )
-                            ret_time = max(0.04, abs(eff_return_degrees) / (max(10, eff_hit_speed) * 8.0))
-                            time.sleep(ret_time)
-                        except Exception as e:
-                            print(f"  {command} hitter error on {mac}: {e}")
-                        finally:
-                            for lk in locks:
-                                if lk is not None:
-                                    lk.release()
+                q = self._brick_queues.get(hitter_mac)
+                if q is not None:
+                    q.put(_run_hitter)
+                else:
+                    threading.Thread(target=_run_hitter, daemon=True).start()
 
-                    q = self._brick_queues.get(hitter_mac)
-                    if q is not None:
-                        q.put(_run_hitters)
-                    else:
-                        threading.Thread(target=_run_hitters, daemon=True).start()
-
-            total_hitters = sum(len(p["hitter"]) for p in target_pairs)
-            print(f"Sent manual strike: {command} ({len(target_pairs)} pair(s), {total_hitters} hitter motor(s))")
+            print(f"Sent manual strike: {command} ({len(target_pairs)} pair(s))")
             return True
 
         # Standard instruments (Gong, Gendang, Gamelan, etc.)

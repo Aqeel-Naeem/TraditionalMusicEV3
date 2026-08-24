@@ -1,22 +1,74 @@
 import customtkinter as ctk
 from ev3 import EV3
 import threading
+import queue
+import sys
+import re
+import time
 import difflib
 from ai.voice import VoiceController
 from ai.gesture import GestureController
 from songs import get_song, play_song, list_songs
 from config import INSTRUMENTS, POSITIONED_INSTRUMENTS
+from ev3_program_runner import play_programs
+from ev3_program_config import PROGRAMS
+
+# Color palette - used by ROLE, not uniformly, so buttons signal their
+# importance instead of all looking the same weight.
+COLOR_ACCENT = "#d97706"        # primary/demo-facing actions (amber - fits the traditional-instrument theme)
+COLOR_ACCENT_HOVER = "#b45309"
+COLOR_SUCCESS = "#22c55e"       # connected/success state only
+COLOR_DANGER = "#ef4444"        # stop/danger only
+COLOR_DANGER_HOVER = "#dc2626"
+COLOR_MUTED = "#52525b"         # secondary/calibration/testing controls
+COLOR_MUTED_HOVER = "#3f3f46"
+COLOR_AI = "#0891b2"            # voice - a distinct "featured" highlight
+COLOR_AI_HOVER = "#0e7490"
+COLOR_GESTURE = "#a855f7"       # gesture events - distinct from voice's teal
+COLOR_LOG_MUTED = "#71717a"     # unrecognized/minor log lines - present but quiet
+
+# Set to False to hide the legacy Architecture 2 test-song section from the
+# GUI entirely (e.g. for a demo) without deleting any code. Flip back to
+# True whenever you want it visible again.
+SHOW_LEGACY_ARCHITECTURE_2 = False
+
+
+class _StdoutTee:
+    """
+    Wraps the real stdout: every print() (from ANY thread - voice,
+    gesture, brick workers, song playback, etc.) still goes to the real
+    terminal as before, AND also gets pushed onto a thread-safe queue
+    that the GUI polls to fill the Activity Panel. This means every
+    existing print() statement across the whole project automatically
+    shows up in the panel too, with no changes needed to those files.
+    """
+    def __init__(self, real_stdout, line_queue):
+        self._real_stdout = real_stdout
+        self._queue = line_queue
+
+    def write(self, text):
+        self._real_stdout.write(text)
+        if text.strip():  # skip pushing bare newlines from print()'s own \n
+            self._queue.put(text)
+
+    def flush(self):
+        self._real_stdout.flush()
 
 class EV3App(ctk.CTk):
-
-    SONG_LIST = ["Rasa Sayang", "Test Motors"]  # extend as you add more songs
 
     def __init__(self):
         super().__init__()
 
         self.ev3 = EV3()
         self.title("Traditional Music EV3 Controller")
-        self.geometry("1000x700")
+        self.geometry("1450x800")
+
+        # Activity Panel: redirect stdout so every existing print()
+        # anywhere in the project (voice, gesture, song playback, brick
+        # workers, etc.) automatically shows up in the GUI panel too,
+        # not just the terminal.
+        self._log_queue = queue.Queue()
+        sys.stdout = _StdoutTee(sys.stdout, self._log_queue)
 
         self.current_stop_event = None
         self.song_list = list_songs()
@@ -30,6 +82,19 @@ class EV3App(ctk.CTk):
         # and it automatically shows up consistently across the whole app.
         self.all_instruments = list(INSTRUMENTS.keys()) + list(POSITIONED_INSTRUMENTS.keys())
 
+        # mac -> instrument name(s), used to translate raw MAC addresses in
+        # log output into friendly instrument names for the Activity Panel.
+        self._mac_to_instruments = {}
+        for name, locations in INSTRUMENTS.items():
+            for loc in locations:
+                self._mac_to_instruments.setdefault(loc["mac"], set()).add(name)
+        for name, definition in POSITIONED_INSTRUMENTS.items():
+            for pair in definition["pairs"].values():
+                macs = {pair["controller"].get("mac")} | {h.get("mac") for h in pair["hitter"]}
+                for mac in macs:
+                    if mac:
+                        self._mac_to_instruments.setdefault(mac, set()).add(name)
+
         self.voice = VoiceController(on_command=self.handle_voice_command)
         self.gesture = GestureController(
             on_instrument_finger_count=self.handle_instrument_gesture,
@@ -40,24 +105,35 @@ class EV3App(ctk.CTk):
         self.create_widgets()  # <- this must come AFTER self.voice/self.gesture are created
         self.refresh_instrument_status()
         self.background_health_check()
+        self._drain_log_queue()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_close(self):
         if self.ev3.connected:
             self.ev3.disconnect()
+        if isinstance(sys.stdout, _StdoutTee):
+            sys.stdout = sys.stdout._real_stdout
         self.destroy()
 
     def connect_ev3(self):
         self.connect_button.configure(state="disabled")  # prevent double-clicks
-        try:
-            self.ev3.connect()
-            self.status_label.configure(text="EV3 Status: Connected", text_color="#22c55e")
-            self.connect_button.configure(text="Connected")
-        except Exception as e:
-            self.status_label.configure(text="EV3 Status: Failed to connect", text_color="#ef4444")
-            self.connect_button.configure(state="normal")  # re-enable so they can retry
-            print(f"Connection error: {e}")
+
+        def _connect_wrapper():
+            try:
+                self.ev3.connect()
+                self.after(0, lambda: (
+                    self.status_label.configure(text="EV3 Status: Connected", text_color="#22c55e"),
+                    self.connect_button.configure(text="Connected"),
+                ))
+            except Exception as e:
+                print(f"Connection error: {e}")
+                self.after(0, lambda: (
+                    self.status_label.configure(text="EV3 Status: Failed to connect", text_color="#ef4444"),
+                    self.connect_button.configure(state="normal"),  # re-enable so they can retry
+                ))
+
+        threading.Thread(target=_connect_wrapper, daemon=True).start()
 
     def disconnect_ev3(self):
         self.disconnect_button.configure(state="disabled")
@@ -95,6 +171,21 @@ class EV3App(ctk.CTk):
 
         threading.Thread(target=_play_wrapper, daemon=True).start()
 
+    def play_downloaded_program(self, program_name):
+        """
+        Triggers an EV3 Classroom program that's already been downloaded
+        to the brick(s) directly (not via this app) - see ev3_program_config.py
+        for the mapping of program name -> {brick mac: remote .rbf path}.
+        """
+        brick_map = PROGRAMS.get(program_name, {})
+        if not brick_map:
+            print(f"No bricks configured for program '{program_name}' - "
+                  "fill in ev3_program_config.py")
+            return
+        threading.Thread(
+            target=play_programs, args=(self.ev3, brick_map), daemon=True
+        ).start()
+
     def create_widgets(self):
         # Main title
         title = ctk.CTkLabel(
@@ -104,8 +195,15 @@ class EV3App(ctk.CTk):
         )
         title.pack(pady=20)
 
-        self.content_frame = ctk.CTkFrame(self, fg_color="transparent", width=700)
-        self.content_frame.pack(pady=10)
+        main_row = ctk.CTkFrame(self, fg_color="transparent")
+        main_row.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        # Activity Panel (left side) - shows every print() from anywhere
+        # in the app (voice, gesture, songs, EV3 connection) in real time.
+        self.create_activity_panel(main_row)
+
+        self.content_frame = ctk.CTkScrollableFrame(main_row, fg_color="transparent")
+        self.content_frame.pack(side="left", fill="both", expand=True)
 
         #Instrument status
         status_grid_frame = ctk.CTkFrame(self.content_frame)
@@ -125,49 +223,112 @@ class EV3App(ctk.CTk):
         self.status_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         self.connect_button = ctk.CTkButton(
-            ev3_frame, text="Connect EV3", command=self.connect_ev3
+            ev3_frame, text="Connect EV3", command=self.connect_ev3,
+            fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
         )
         self.connect_button.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
         self.disconnect_button = ctk.CTkButton(
-            ev3_frame, text="Disconnect EV3", command=self.disconnect_ev3
+            ev3_frame, text="Disconnect EV3", command=self.disconnect_ev3,
+            fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
         )
         self.disconnect_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
 
         battery_button = ctk.CTkButton(
-            ev3_frame, text="Check Battery", command=self.check_battery
+            ev3_frame, text="Check Battery", command=self.check_battery,
+            fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
         )
         battery_button.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
-        # Song Section
-        song_frame = ctk.CTkFrame(self.content_frame)
-        song_frame.pack(padx=10, pady=12, fill="x")
+        # Song Section (Architecture 2 - legacy, hidden for the demo via
+        # SHOW_LEGACY_ARCHITECTURE_2, but nothing here is deleted)
+        if SHOW_LEGACY_ARCHITECTURE_2:
+            song_frame = ctk.CTkFrame(self.content_frame)
+            song_frame.pack(padx=10, pady=12, fill="x")
 
-        song_title = ctk.CTkLabel(
-            song_frame, text="🎼 Song Selection", font=("Arial", 18)
-        )
-        song_title.grid(row=0, column=0, columnspan=len(self.song_list), padx=10, pady=10, sticky="ew")
-
-        song_frame.grid_columnconfigure(tuple(range(len(self.song_list))), weight=1)
-
-        for i, song_name in enumerate(self.song_list):
-            btn = ctk.CTkButton(
-                song_frame,
-                text=song_name,
-                command=lambda name=song_name: self.play_selected_song(name)
+            song_title = ctk.CTkLabel(
+                song_frame, text="🧪 Test Songs (Architecture 2 - not in use)", font=("Arial", 18)
             )
-            btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
+            song_title.pack(padx=10, pady=(10, 0))
 
-        # Prominent Stop Song button
+            song_subtitle = ctk.CTkLabel(
+                song_frame,
+                text="Hand-built on-brick bytecode - being revisited later, not the current primary path",
+                text_color="#888888",
+                font=("Arial", 11),
+            )
+            song_subtitle.pack(padx=10, pady=(0, 10))
+
+            song_buttons_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
+            song_buttons_frame.pack(pady=10)
+
+            for song_name in self.song_list:
+                btn = ctk.CTkButton(
+                    song_buttons_frame,
+                    text=song_name,
+                    command=lambda name=song_name: self.play_selected_song(name),
+                    fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
+                    width=140,
+                )
+                btn.pack(side="left", padx=8)
+
+            # Prominent Stop Song button
+            self._legacy_stop_song_button = ctk.CTkButton(
+                song_frame,
+                text="⏹ Stop Song",
+                fg_color="#ef4444",
+                hover_color="#dc2626",
+                command=self.stop_song,
+            )
+            self._legacy_stop_song_button.pack(fill="x", padx=10, pady=(0, 10))
+
+        # EV3 Classroom Programs Section (programs downloaded to the brick
+        # directly, triggered by name - see ev3_program_config.py). This is
+        # the current primary song-playing path (Architecture 3), so it's
+        # labeled with the user-facing "Song Selection" name.
+        program_frame = ctk.CTkFrame(self.content_frame)
+        program_frame.pack(padx=10, pady=12, fill="x")
+
+        program_title = ctk.CTkLabel(
+            program_frame, text="🎼 Song Selection", font=("Arial", 18)
+        )
+        program_title.grid(row=0, column=0, columnspan=max(1, len(PROGRAMS)), padx=10, pady=10, sticky="ew")
+
+        if PROGRAMS:
+            program_frame.grid_columnconfigure(tuple(range(len(PROGRAMS))), weight=1)
+            for i, program_name in enumerate(PROGRAMS):
+                btn = ctk.CTkButton(
+                    program_frame,
+                    text=program_name,
+                    command=lambda name=program_name: self.play_downloaded_program(name),
+                    fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+                    font=("Arial", 14, "bold"),
+                    height=42,
+                )
+                btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
+        else:
+            empty_label = ctk.CTkLabel(
+                program_frame,
+                text="No programs configured yet - fill in ev3_program_config.py",
+                text_color="#888888",
+            )
+            empty_label.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+
+        # Prominent Stop button, right here since this is the section that
+        # actually starts songs (the old Stop Song button was inside the
+        # now-hidden legacy section, so nothing visible could stop a
+        # currently-playing downloaded program before this).
         self.stop_song_button = ctk.CTkButton(
-            song_frame,
-            text="⏹ Stop Song",
-            fg_color="#ef4444",
-            hover_color="#dc2626",
+            program_frame,
+            text="⏹ Stop",
+            fg_color=COLOR_DANGER,
+            hover_color=COLOR_DANGER_HOVER,
+            font=("Arial", 14, "bold"),
+            height=38,
             command=self.stop_song,
         )
         self.stop_song_button.grid(
-            row=2, column=0, columnspan=len(self.song_list), padx=10, pady=(0, 10), sticky="ew"
+            row=2, column=0, columnspan=max(1, len(PROGRAMS)), padx=10, pady=(0, 10), sticky="ew"
         )
 
         # Instrument Control Section
@@ -176,23 +337,30 @@ class EV3App(ctk.CTk):
 
         instrument_title = ctk.CTkLabel(
             instrument_frame,
-            text="🥁 Instrument Control",
-            font=("Arial", 18)
+            text="🥁 Instrument Control (calibration/testing)",
+            font=("Arial", 15),
+            text_color="#a1a1aa",
         )
-        instrument_title.grid(
-            row=0, column=0, padx=10, pady=10, sticky="ew",
-            columnspan=len(self.all_instruments)
-        )
+        instrument_title.pack(padx=10, pady=10)
 
-        instrument_frame.grid_columnconfigure(tuple(range(len(self.all_instruments))), weight=1)
+        instrument_columns = 4
+        instruments = self.all_instruments
+        rows_needed = -(-len(instruments) // instrument_columns)  # ceil division
 
-        for i, instrument_name in enumerate(self.all_instruments):
-            btn = ctk.CTkButton(
-                instrument_frame,
-                text=instrument_name.title(),
-                command=lambda name=instrument_name: self.ev3.send_command(name)
-            )
-            btn.grid(row=1, column=i, padx=10, pady=10, sticky="ew")
+        for r in range(rows_needed):
+            row_frame = ctk.CTkFrame(instrument_frame, fg_color="transparent")
+            row_frame.pack(pady=4)
+            chunk = instruments[r * instrument_columns:(r + 1) * instrument_columns]
+            for instrument_name in chunk:
+                btn = ctk.CTkButton(
+                    row_frame,
+                    text=instrument_name.title(),
+                    command=lambda name=instrument_name: self.ev3.send_command(name),
+                    fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
+                    width=120, height=28,
+                    font=("Arial", 12),
+                )
+                btn.pack(side="left", padx=6)
 
         # AI Section
         ai_frame = ctk.CTkFrame(self.content_frame)
@@ -205,28 +373,253 @@ class EV3App(ctk.CTk):
         ai_title.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         self.voice_button = ctk.CTkButton(
-            ai_frame, text="Voice Recognition", command=self.toggle_voice
+            ai_frame, text="Voice Recognition", command=self.toggle_voice,
+            fg_color=COLOR_AI, hover_color=COLOR_AI_HOVER,
         )
         self.voice_button.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
 
         self.gesture_button = ctk.CTkButton(
-            ai_frame, text="Gesture Recognition", command=self.toggle_gesture
+            ai_frame, text="Gesture Recognition", command=self.toggle_gesture,
+            fg_color=COLOR_AI, hover_color=COLOR_AI_HOVER,
         )
         self.gesture_button.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+
+    def create_activity_panel(self, parent):
+        """
+        A live-updating log panel on the left side of the window, showing
+        every print() from anywhere in the app (voice recognition, gesture
+        detection, EV3 connection/health checks, song/program playback) as
+        it happens - so a demo audience can see what's going on without
+        needing the terminal visible.
+        """
+        panel = ctk.CTkFrame(parent, width=340)
+        panel.pack(side="left", fill="y", padx=(0, 12))
+        panel.pack_propagate(False)  # keep this width fixed regardless of content
+
+        header_row = ctk.CTkFrame(panel, fg_color="transparent")
+        header_row.pack(fill="x", padx=10, pady=(10, 5))
+
+        panel_title = ctk.CTkLabel(
+            header_row, text="📋 Activity Log", font=("Arial", 16, "bold")
+        )
+        panel_title.pack(side="left")
+
+        clear_button = ctk.CTkButton(
+            header_row, text="Clear", width=60, height=24,
+            fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
+            font=("Arial", 11),
+            command=self.clear_activity_log,
+        )
+        clear_button.pack(side="right")
+
+        self.activity_textbox = ctk.CTkTextbox(
+            panel, wrap="word", font=("Consolas", 11), activate_scrollbars=True
+        )
+        self.activity_textbox.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.activity_textbox.configure(state="disabled")  # read-only from the user's side
+
+        # Color tags so different kinds of events are visually scannable
+        # at a glance, matching the app's existing color roles.
+        self.activity_textbox.tag_config("success", foreground=COLOR_SUCCESS)
+        self.activity_textbox.tag_config("error", foreground=COLOR_DANGER)
+        self.activity_textbox.tag_config("voice", foreground=COLOR_AI)
+        self.activity_textbox.tag_config("gesture", foreground=COLOR_GESTURE)
+        self.activity_textbox.tag_config("action", foreground=COLOR_ACCENT)
+        self.activity_textbox.tag_config("info", foreground="#d4d4d8")
+        self.activity_textbox.tag_config("muted", foreground=COLOR_LOG_MUTED)
+
+    def clear_activity_log(self):
+        self.activity_textbox.configure(state="normal")
+        self.activity_textbox.delete("1.0", "end")
+        self.activity_textbox.configure(state="disabled")
+
+    def _friendly_instrument(self, mac):
+        """Translate a raw MAC address into its instrument name(s), for display."""
+        names = self._mac_to_instruments.get(mac)
+        return " / ".join(sorted(names)) if names else mac
+
+    def _format_log_line(self, raw_line):
+        """
+        Translates one raw print() line into (display_text, tag) for the
+        Activity Panel - friendlier wording, instrument names instead of
+        MAC addresses, and an icon/color per category. Returns None for
+        lines that are pure internal noise not worth showing a demo
+        audience (never suppresses errors/failures, only routine
+        confirmations already reflected elsewhere, like the status grid).
+
+        Anything that doesn't match a known pattern still gets shown
+        (as-is, muted color) rather than silently dropped - so nothing
+        useful is ever hidden, just de-prioritized visually.
+        """
+        line = raw_line.strip()
+        if not line:
+            return None
+
+        m = re.match(r"^Brick (\S+): connected$", line)
+        if m:
+            return f"✅ {self._friendly_instrument(m.group(1))} connected", "success"
+
+        m = re.match(r"^Brick (\S+): FAILED to connect - (.+)$", line)
+        if m:
+            return f"❌ {self._friendly_instrument(m.group(1))} failed to connect", "error"
+
+        if re.match(r"^Brick (\S+): worker thread started$", line):
+            return None  # internal detail, not demo-relevant
+
+        if line == "EV3 connection phase complete (see above for per-instrument status).":
+            return "🎉 Ready to play!", "success"
+
+        if line == "Connecting to EV3 bricks...":
+            return "🔌 Connecting to all instruments...", "info"
+
+        if line == "Disconnecting all EV3 bricks...":
+            return "🔌 Disconnecting...", "info"
+
+        if re.match(r"^Brick (\S+): disconnected$", line):
+            return None  # confirmed individually, summary is enough
+
+        m = re.match(r"^(.+): NOT fully ready \(.+\)$", line)
+        if m:
+            return f"⚠️ {m.group(1)} not fully connected", "error"
+
+        if re.match(r"^.+: ready \(.+\)$", line) or re.match(r"^.+ \w+: ready$", line):
+            return None  # already reflected in the status grid, redundant here
+
+        if re.match(r"^.+ \w+: pending configuration$", line):
+            return None  # expected/normal during partial setup
+
+        m = re.match(r"^(.+) (\w+): unavailable \(brick not connected\)$", line)
+        if m:
+            return f"⚠️ {m.group(1)} ({m.group(2)}) unavailable", "error"
+
+        m = re.match(r"^(.+) (\w+): FAILED to set up - (.+)$", line)
+        if m:
+            return f"❌ {m.group(1)} ({m.group(2)}) setup failed", "error"
+
+        m = re.match(r"^Sent command: (\S+?)(?:\[\d+\])? \(\d+ motor\(s\)\)", line)
+        if m:
+            return f"🥁 {m.group(1).title()} played", "action"
+
+        m = re.match(r"^Sent manual strike: (\S+) \(\d+ pair\(s\)\)$", line)
+        if m:
+            return f"🎶 {m.group(1).title()} played", "action"
+
+        m = re.match(r"^Cannot send '(.+)': not connected$", line)
+        if m:
+            return f"⚠️ Can't play {m.group(1).title()} - not connected", "error"
+
+        m = re.match(r"^Cannot send '(.+)': (.+)$", line)
+        if m:
+            return f"⚠️ {m.group(1).title()}: {m.group(2)}", "error"
+
+        if re.match(r"^Voice recognition started", line):
+            return "🎤 Voice recognition ON", "voice"
+        if line == "Voice recognition stopped.":
+            return "🎤 Voice recognition OFF", "voice"
+
+        m = re.match(r"^Heard: (.+)$", line)
+        if m:
+            return f'🎤 Heard: "{m.group(1)}"', "voice"
+
+        if re.match(r"^Command detected:", line):
+            return None  # the "Matched" line right after covers this
+
+        if line == "Wake word detected, but no command followed.":
+            return "🎤 Heard wake word, no command followed", "voice"
+
+        m = re.match(r"^Matched '.+' -> '(.+)'$", line)
+        if m:
+            return f"🎤 Voice: Playing {m.group(1)}", "voice"
+
+        m = re.match(r"^Could not match voice command to anything known: '(.+)'$", line)
+        if m:
+            return f'🎤 Didn\'t understand: "{m.group(1)}"', "error"
+
+        m = re.match(r"^Right hand \d+ finger\(s\) -> (.+)$", line)
+        if m:
+            return f"✋ Gesture: Playing {m.group(1)}", "gesture"
+
+        m = re.match(r"^Left hand \d+ finger\(s\) -> (.+)$", line)
+        if m:
+            return f"✋ Gesture: Playing {m.group(1)}", "gesture"
+
+        if re.match(r"^No (song|program) mapped to \d+ finger", line):
+            return None  # idle/no-op gesture, not worth showing
+
+        if re.match(r"^Starting \d+ EV3 program\(s\)", line):
+            return None  # redundant, per-brick "started" lines follow
+
+        m = re.match(r"^Brick (\S+): program started \((.+)\)$", line)
+        if m:
+            return f"▶️ {self._friendly_instrument(m.group(1))} started", "action"
+
+        m = re.match(r"^Brick (\S+): FAILED to start program \((.+)\) - (.+)$", line)
+        if m:
+            return f"❌ {self._friendly_instrument(m.group(1))} failed to start", "error"
+
+        if line == "Stop requested.":
+            return "⏹ Stopped", "action"
+
+        m = re.match(r"^Battery (\S+): (.+)$", line)
+        if m:
+            return f"🔋 {self._friendly_instrument(m.group(1))}: {m.group(2)}", "info"
+
+        if line == "Not connected - can't check battery":
+            return "⚠️ Connect first to check battery", "error"
+
+        # Fallback: show unrecognized lines as-is rather than hide them,
+        # just visually quiet so they don't compete with the friendly ones.
+        return line, "muted"
+
+    def _drain_log_queue(self):
+        """
+        Runs on the main GUI thread via self.after() - pulls any new lines
+        pushed by _StdoutTee (from print() calls on ANY thread), translates
+        them into friendly text via _format_log_line, and appends them to
+        the panel with a timestamp and color tag. Polling like this
+        (instead of writing directly from whichever background thread
+        called print) keeps all Tkinter widget updates safely on the main
+        thread.
+        """
+        drained_any = False
+        try:
+            while True:
+                raw_line = self._log_queue.get_nowait()
+                for line in raw_line.splitlines():
+                    formatted = self._format_log_line(line)
+                    if formatted is None:
+                        continue
+                    text, tag = formatted
+                    timestamp = time.strftime("%H:%M:%S")
+                    self.activity_textbox.configure(state="normal")
+                    self.activity_textbox.insert("end", f"[{timestamp}] ", "muted")
+                    self.activity_textbox.insert("end", text + "\n", tag)
+                    drained_any = True
+        except queue.Empty:
+            pass
+
+        if drained_any:
+            self.activity_textbox.configure(state="disabled")
+            self.activity_textbox.see("end")  # auto-scroll to the newest line
+
+        self.after(150, self._drain_log_queue)
 
     def create_status_grid(self, parent_frame):
         self.instrument_status_labels = {}
 
-        parent_frame.grid_columnconfigure(tuple(range(len(self.all_instruments))), weight=1)
+        columns = 4  # wrap after this many, so it scales cleanly past 4 instruments
+        parent_frame.grid_columnconfigure(tuple(range(columns)), weight=1)
 
         for i, instrument in enumerate(self.all_instruments):
+            row, col = divmod(i, columns)
             label = ctk.CTkLabel(
                 parent_frame,
                 text=f"{instrument}: Unknown",
                 text_color="#888888",
+                font=("Arial", 13),
                 anchor="center"
             )
-            label.grid(row=0, column=i, padx=10, pady=10, sticky="ew")
+            label.grid(row=row, column=col, padx=8, pady=8, sticky="ew")
             self.instrument_status_labels[instrument] = label
 
     def refresh_instrument_status(self):
@@ -286,7 +679,7 @@ class EV3App(ctk.CTk):
         if not cleaned:
             cleaned = command
 
-        known_targets = self.all_instruments + self.song_list + list(voice_actions.keys())
+        known_targets = self.all_instruments + list(PROGRAMS.keys()) + list(voice_actions.keys())
         lower_to_real = {t.lower(): t for t in known_targets}
         lower_targets = list(lower_to_real.keys())
 
@@ -311,12 +704,12 @@ class EV3App(ctk.CTk):
         elif target in self.all_instruments:
             self.ev3.send_command(target)
         else:
-            self.play_selected_song(target)
+            self.play_downloaded_program(target)
 
     def toggle_voice(self):
         if self.voice._listening:
             self.voice.stop()
-            self.voice_button.configure(text="Voice Recognition", fg_color=("#3b82f6", "#1e40af"))
+            self.voice_button.configure(text="Voice Recognition", fg_color=COLOR_AI)
         else:
             self.voice.start()
             self.voice_button.configure(text="Stop Voice Recognition", fg_color="#ef4444")
@@ -326,7 +719,7 @@ class EV3App(ctk.CTk):
         # Schedule the button update on the main thread, since this runs
         # from voice recognition's background thread, not the GUI thread
         self.after(0, lambda: self.voice_button.configure(
-            text="Voice Recognition", fg_color=("#3b82f6", "#1e40af")
+            text="Voice Recognition", fg_color=COLOR_AI
         ))
 
     def start_gesture_command(self):
@@ -340,7 +733,7 @@ class EV3App(ctk.CTk):
         if self.gesture._running:
             self.gesture.stop()
             self.after(0, lambda: self.gesture_button.configure(
-                text="Gesture Recognition", fg_color=("#3b82f6", "#1e40af")
+                text="Gesture Recognition", fg_color=COLOR_AI
             ))
 
     def handle_instrument_gesture(self, count):
@@ -351,18 +744,19 @@ class EV3App(ctk.CTk):
             print(f"Right hand {count} finger(s) -> {instrument}")
 
     def handle_song_gesture(self, count):
+        program_names = list(PROGRAMS.keys())
         index = count - 1
-        if 0 <= index < len(self.song_list):
-            song_name = self.song_list[index]
-            print(f"Left hand {count} finger(s) -> {song_name}")
-            self.play_selected_song(song_name)
+        if 0 <= index < len(program_names):
+            program_name = program_names[index]
+            print(f"Left hand {count} finger(s) -> {program_name}")
+            self.play_downloaded_program(program_name)
         else:
-            print(f"No song mapped to {count} finger(s) (only {len(self.song_list)} song(s) available)")
+            print(f"No program mapped to {count} finger(s) (only {len(program_names)} program(s) available)")
 
     def toggle_gesture(self):
         if self.gesture._running:
             self.gesture.stop()
-            self.gesture_button.configure(text="Gesture Recognition", fg_color=("#3b82f6", "#1e40af"))
+            self.gesture_button.configure(text="Gesture Recognition", fg_color=COLOR_AI)
         else:
             self.gesture.start()
             self.gesture_button.configure(text="Stop Gesture Recognition", fg_color="#ef4444")
@@ -372,4 +766,4 @@ class EV3App(ctk.CTk):
             self.current_stop_event.set()
         if self.ev3.connected:
             self.ev3.stop_all_motors()
-        print("Stop requested.")
+        print("Stop requested.")

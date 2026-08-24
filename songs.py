@@ -12,143 +12,35 @@ PORT_MAP = {
 
 SONGS = {
     "Test Motors": [
-        # ============================================================
-        # COMPREHENSIVE MOTOR & ENSEMBLE DIAGNOSTIC TEST
-        #
-        # Tests every configured motor individually in sequence,
-        # followed by a simultaneous ensemble strike across all bricks
-        # to visually and audibly verify on-brick local timing.
-        # ============================================================
+        {"instrument": "GAMELAN 1", "key": 0, "beat": 0.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 1, "beat": 0.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 2, "beat": 1.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 2, "beat": 2.0, "degrees": 90, "speed": 70},
 
-        # --- 1. SARON: Left Pair (Notes 1 to 4) ---
-        {"instrument": "SARON", "note": "Saron 1", "beat": 0.0, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 2", "beat": 1.5, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 3", "beat": 3.0, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 4", "beat": 4.5, "hit_degrees": 90, "hit_speed": 60},
-
-        # --- 2. SARON: Right Pair (Notes 5 to 8) ---
-        {"instrument": "SARON", "note": "Saron 5", "beat": 6.0, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 6", "beat": 7.5, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 7", "beat": 9.0, "hit_degrees": 90, "hit_speed": 60},
-        {"instrument": "SARON", "note": "Saron 8", "beat": 10.5, "hit_degrees": 90, "hit_speed": 60},
-
-        # # --- 3. GENDANG: Individual Keys ---
-        # {"instrument": "GENDANG", "key": 0, "beat": 12.0, "degrees": 90, "speed": 60},
-        # {"instrument": "GENDANG", "key": 1, "beat": 13.5, "degrees": 90, "speed": 60},
-
-        # # --- 4. GONG: Individual Keys ---
-        # {"instrument": "GONG", "key": 0, "beat": 15.0, "degrees": 90, "speed": 60},
-        # {"instrument": "GONG", "key": 1, "beat": 16.5, "degrees": 90, "speed": 60},
-
-        # # --- 5. GAMELAN 1: Ports A, B, C ---
-        # {"instrument": "GAMELAN 1", "key": 0, "beat": 18.0, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 1", "key": 1, "beat": 19.5, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 1", "key": 2, "beat": 21.0, "degrees": 90, "speed": 60},
-
-        # # --- 6. GAMELAN 2: Ports A, B, C ---
-        # {"instrument": "GAMELAN 2", "key": 0, "beat": 22.5, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 2", "key": 1, "beat": 24.0, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 2", "key": 2, "beat": 25.5, "degrees": 90, "speed": 60},
-
-        # # --- 7. GAMELAN 3: Ports A, B, C ---
-        # {"instrument": "GAMELAN 3", "key": 0, "beat": 27.0, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 3", "key": 1, "beat": 28.5, "degrees": 90, "speed": 60},
-        # {"instrument": "GAMELAN 3", "key": 2, "beat": 30.0, "degrees": 90, "speed": 60},
-
-        # # --- 8. SIMULTANEOUS ENSEMBLE HIT (Sync Test) ---
-        # {"instrument": "SARON", "note": "Saron 3", "beat": 32.0, "hit_degrees": 90, "hit_speed": 70},
-        # {"instrument": "GENDANG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        # {"instrument": "GONG", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        # {"instrument": "GAMELAN 1", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        # {"instrument": "GAMELAN 2", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
-        # {"instrument": "GAMELAN 3", "key": 0, "beat": 32.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 0, "beat": 3.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 1, "beat": 4.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 2, "beat": 4.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 0, "beat": 5.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 1, "beat": 5.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 2, "beat": 6.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 0, "beat": 6.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 1, "beat": 7.0, "degrees": 90, "speed": 70},
     ],
 
     "Rasa Sayang (10s Demo)": [
-        # ============================================================
-        # RASA SAYANG - 10 SECOND ENSEMBLE DEMO
-        # ============================================================
+        {"instrument": "GAMELAN 1", "key": 0, "beat": 0.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 1, "beat": 0.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 2, "beat": 1.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 1", "key": 2, "beat": 2.0, "degrees": 90, "speed": 70},
 
-        # ------------------------------------------------------------
-        # INTRO - Chime
-        # ------------------------------------------------------------
-        {"instrument": "CHIME", "key": 0, "beat": 0.0, "duration": 0.4},
-
-        # ------------------------------------------------------------
-        # PHRASE 1 - "Rasa sayange..."
-        # ------------------------------------------------------------
-        {"instrument": "SARON", "note": "Saron 3", "beat": 1.0},
-        {"instrument": "SARON", "note": "Saron 4", "beat": 1.5},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 2.0},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 2.5},
-
-        {"instrument": "SARON", "note": "Saron 8", "beat": 3.25, "hit_speed": 65},
-        {"instrument": "SARON", "note": "Saron 7", "beat": 3.75},
-        {"instrument": "SARON", "note": "Saron 6", "beat": 4.25},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 4.75},
-
-        # Gendang rhythm
-        {"instrument": "GENDANG", "key": 0, "beat": 1.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 2.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 3.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 4.0, "duration": 0.25},
-
-        # Light Bonang support
-        {"instrument": "BONANG", "key": 0, "beat": 2.0, "duration": 0.2},
-        {"instrument": "BONANG", "key": 0, "beat": 4.0, "duration": 0.2},
-
-        # ------------------------------------------------------------
-        # PHRASE 2 - "Rasa sayang sayange..."
-        # ------------------------------------------------------------
-        {"instrument": "SARON", "note": "Saron 5", "beat": 5.5},
-        {"instrument": "SARON", "note": "Saron 3", "beat": 6.0},
-        {"instrument": "SARON", "note": "Saron 4", "beat": 6.5},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 7.0},
-
-        # Bonang response
-        {"instrument": "BONANG", "key": 0, "beat": 5.5, "duration": 0.2},
-        {"instrument": "BONANG", "key": 0, "beat": 6.5, "duration": 0.2},
-        {"instrument": "BONANG", "key": 0, "beat": 7.0, "duration": 0.2},
-
-        # Gendang continues the pulse
-        {"instrument": "GENDANG", "key": 0, "beat": 5.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 6.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 7.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 8.0, "duration": 0.25},
-
-        # Gong marks the end of the first recognizable phrase
-        {"instrument": "GONG", "key": None, "beat": 8.0, "duration": 0.5},
-
-        # ------------------------------------------------------------
-        # REPEAT / RESPONSE
-        # ------------------------------------------------------------
-        {"instrument": "SARON", "note": "Saron 3", "beat": 9.0},
-        {"instrument": "SARON", "note": "Saron 4", "beat": 9.5},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 10.0},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 10.5},
-
-        {"instrument": "BONANG", "key": 0, "beat": 10.0, "duration": 0.2},
-
-        # Gendang
-        {"instrument": "GENDANG", "key": 0, "beat": 9.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 10.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 11.0, "duration": 0.25},
-
-        # Chime transition
-        {"instrument": "CHIME", "key": 0, "beat": 11.5, "duration": 0.4},
-
-        # ------------------------------------------------------------
-        # ENDING
-        # ------------------------------------------------------------
-        {"instrument": "SARON", "note": "Saron 5", "beat": 13.0},
-        {"instrument": "SARON", "note": "Saron 3", "beat": 14.0},
-        {"instrument": "SARON", "note": "Saron 5", "beat": 15.0},
-
-        {"instrument": "GENDANG", "key": 0, "beat": 13.0, "duration": 0.25},
-        {"instrument": "GENDANG", "key": 0, "beat": 14.0, "duration": 0.25},
-
-        # Final gong
-        {"instrument": "GONG", "key": None, "beat": 16.0, "duration": 0.5},
+        {"instrument": "GAMELAN 2", "key": 0, "beat": 3.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 1, "beat": 4.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 2, "beat": 4.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 0, "beat": 5.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 1, "beat": 5.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 3", "key": 2, "beat": 6.0, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 0, "beat": 6.5, "degrees": 90, "speed": 70},
+        {"instrument": "GAMELAN 2", "key": 1, "beat": 7.0, "degrees": 90, "speed": 70},
     ],
 }
 
