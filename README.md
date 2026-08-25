@@ -98,10 +98,30 @@ For each brick:
 **Settings > Brick Info** on the brick, look for **ID**, e.g.
 `001653437F21` - add colons every 2 characters: `00:16:53:43:7F:21`.
 
-## Step 10: Tell the app which instrument uses which brick
+## Step 10: Set up your brick(s)
 
-Open `config.py`. Simple instruments (one motor, or a few motors that
-fire together) go in `INSTRUMENTS`:
+### The current setup: one master brick (no motors needed)
+
+Right now, the app is set up to connect to **one coordinator brick**
+that has no motors attached - that brick runs its own program which
+handles talking to all the other instrument bricks on its own, outside
+this app entirely. This is simpler to set up on the PC side, and was
+adopted specifically to reduce Bluetooth command delay (see
+`DOCUMENTATION.md`'s Architecture History, Architecture 4).
+
+In `config.py`:
+```python
+PROGRAM_ONLY_BRICKS = [
+    "00:16:53:41:90:6e",  # your master brick's MAC
+]
+```
+That's the only config needed for this brick - no ports, no motors.
+See Step 13 for how to tell the app which program to run on it.
+
+### The older approach: one brick per instrument (still works, currently unused)
+
+If you're *not* using a master-relay setup, instruments can instead be
+configured directly - open `config.py`'s `INSTRUMENTS` dict:
 ```python
 INSTRUMENTS = {
     "GONG": [
@@ -111,14 +131,16 @@ INSTRUMENTS = {
 ```
 **An instrument can span multiple bricks or share a brick with another
 instrument** - just list every `{mac, port}` it needs. Two instruments
-can even sit on the *same* brick, using different ports - the app
-automatically shares one Bluetooth connection per unique brick, no
-matter how many instruments use it.
+can even sit on the *same* brick, using different ports.
 
 Complex instruments with a "controller" motor (positions to an angle)
 and a "hitter" motor (strikes) go in `POSITIONED_INSTRUMENTS` instead -
-see `DOCUMENTATION.md` for the full explanation, since this needs some
-physical calibration steps.
+see `DOCUMENTATION.md`.
+
+If you switch to this approach, also set `SHOW_INSTRUMENT_SECTIONS =
+True` in `gui.py` to bring back the status grid and manual instrument
+buttons (currently hidden since they're not relevant to a master-brick
+only setup).
 
 ## Step 11: Run the app
 ```
@@ -131,45 +153,43 @@ python main.py
 
 - **Connect EV3 / Disconnect EV3 / Check Battery** - self-explanatory;
   check battery before every use, low battery can cause odd behavior
-- **Status grid** (top) - green = instrument connected, red = not
 - **Activity Panel** (left side) - shows everything happening in plain
   language: connections, commands sent, voice/gesture events, errors -
   color-coded, with timestamps
 - **Song Selection** - your actual songs/programs, downloaded to the EV3
-  bricks directly and triggered by name (see Step 13)
-- **Instrument Control** - manual single-instrument test buttons, for
-  calibration/testing, not really meant for the actual performance
+  brick(s) directly and triggered by name (see Step 13)
+- **Status grid / Instrument Control** - only shown if you're using the
+  older per-instrument setup (`SHOW_INSTRUMENT_SECTIONS = True`)
 - **Test Songs (Architecture 2)** - hidden by default (see
   `DOCUMENTATION.md`), an older approach kept for future development
 
-## Step 13: Setting up songs (the current approach)
+## Step 13: Setting up songs/programs
 
 Songs are built as small programs in **EV3 Classroom** (LEGO's own
-official app), downloaded directly onto each brick, and triggered by
-name from this app - not written as Python code. This is different from
-how it worked earlier in development; see `DOCUMENTATION.md`'s
-Architecture History section for why.
+official app), downloaded directly onto a brick, and triggered by name
+from this app - not written as Python code.
 
-1. Build your song's motor timing as a program in EV3 Classroom, one
-   program per brick that needs to play something for that song
-2. Download each program to its brick
-3. Find the program's exact file path with:
+1. Build the program (in EV3 Classroom, or whatever tool was used to
+   build your master brick's relay program) and download it
+2. Find its exact file path:
    ```
    python test/list_ev3_files.py <brick_mac>
    ```
    then again with a folder path shown in the output, to see the actual
    file inside. **Names are case-sensitive** - always confirm the real
    path this way rather than guessing.
-4. Add an entry to `ev3_program_config.py`'s `PROGRAMS` dict:
+3. Add an entry to `ev3_program_config.py`'s `PROGRAMS` dict:
    ```python
    PROGRAMS = {
        "Your Song Name": {
            "<brick mac>": "<exact remote .rbf path>",
-           "<another brick mac>": "<its path>",
        },
    }
    ```
-5. Restart the app - a button for your song appears automatically
+   For the master-relay setup, this is just **one** brick (the master).
+   For the older per-instrument approach, list every brick the song
+   needs, same as before.
+4. Restart the app - a button for your song appears automatically
 
 ## Step 14: Using voice and gesture control
 

@@ -10,7 +10,7 @@ as what did. For setup instructions, see `README.md`.
 
 0. [Glossary](#0-glossary)
 1. [Project overview](#1-project-overview)
-2. [Architecture history - why we're on our 3rd approach](#2-architecture-history---why-were-on-our-3rd-approach)
+2. [Architecture history - why we're on our 4th approach](#2-architecture-history---why-were-on-our-4th-approach)
 3. [File structure](#3-file-structure)
 4. [`config.py` - instrument mapping](#4-configpy---instrument-mapping)
 5. [`ev3.py` - the hardware layer](#5-ev3py---the-hardware-layer)
@@ -25,6 +25,7 @@ as what did. For setup instructions, see `README.md`.
 14. [Gesture recognition](#14-gesture-recognition)
 15. [Safe shutdown](#15-safe-shutdown)
 16. [Known limitations](#16-known-limitations)
+17. [Architecture 4 - `PROGRAM_ONLY_BRICKS` and the master-relay setup](#17-architecture-4---program_only_bricks-and-the-master-relay-setup)
 
 ---
 
@@ -65,10 +66,10 @@ bricks never need custom firmware or software installed on them.
 
 ---
 
-## 2. Architecture history - why we're on our 3rd approach
+## 2. Architecture history - why we're on our 4th approach
 
 This matters a lot for understanding the current code, since remnants
-of all three approaches still exist in the project.
+of all four approaches still exist in the project.
 
 ### Architecture 1 - live, per-command control
 Every action (a button click, a song note) sent a command over
@@ -93,7 +94,7 @@ once each operation it uses can be validated the way we eventually
 validated `opProgram_Stop` (see Section 9). It's currently hidden from
 the GUI by default (`SHOW_LEGACY_ARCHITECTURE_2 = False` in `gui.py`).
 
-### Architecture 3 - EV3 Classroom downloaded programs (current)
+### Architecture 3 - EV3 Classroom downloaded programs, one brick per instrument
 Instead of hand-building byte-code in Python, each song's motor timing
 is built visually in **EV3 Classroom** (LEGO's own official app),
 compiled by LEGO's own tested compiler into a `.rbf` file, and just
@@ -104,9 +105,39 @@ playback) **without** the hand-rolled byte-code risk - the only custom
 byte-code left is the small, carefully-validated "start this program" /
 "stop everything" commands (see Section 9), not entire song logic.
 
-**This is why the GUI's "Song Selection" section is Architecture 3**
-(triggering downloaded programs), while the old Architecture 2 song
-data sits hidden but intact for later.
+The PC connected individually to every instrument brick (up to 7 - see
+Section 7's Bluetooth device limit). Even with consolidation work
+(merging GONG+GENDANG, merging GAMELAN 1/2/3), noticeable command delay
+remained once several bricks were connected at once.
+
+### Architecture 4 - single master brick, brick-to-brick relay (current)
+Rather than the PC connecting to every instrument brick individually,
+the PC now connects to **one coordinator ("master") brick with no
+motors attached**, and starts a single downloaded program on it. That
+program - running entirely on the master brick, built and maintained
+separately from this PC-side codebase - is responsible for relaying
+commands to the other bricks over its **own** EV3-to-EV3 Bluetooth
+connections, independent of the PC.
+
+**Important, honest caveat:** this does not necessarily solve the
+underlying Bluetooth 7-device piconet limit (see Section 7) - it moves
+which device's piconet is affected (the master brick's, instead of the
+PC's), it doesn't remove the underlying protocol limit. Whether this
+actually reduces delay depends on the master brick's own program and
+possibly on whether the original bottleneck was specifically the PC's
+Bluetooth adapter/driver - this was a reasonable thing to try given the
+persistent delay, but its effectiveness hadn't been fully verified
+against the full 7-servant-brick setup as of this writing (the PC-side
+connection to the master brick was verified working; the master brick's
+own relay logic to the other 7 bricks is a separate piece of work,
+owned by a teammate, not part of this repository).
+
+**This is why `PROGRAM_ONLY_BRICKS` exists in `config.py`** (see
+Section 17) - a brick with no motors, connected purely to run a
+program. The Architecture 3 instrument-per-brick approach still exists
+in the code and still works (nothing was removed) - it's just not the
+currently active setup, since `SHOW_INSTRUMENT_SECTIONS = False` hides
+its UI and `INSTRUMENTS`/`POSITIONED_INSTRUMENTS` are currently empty.
 
 ---
 
@@ -517,8 +548,9 @@ call directly from voice recognition's background thread.
 - Voice recognition remains less reliable than gesture, especially for
   non-English words - treat it as a backup/demo feature
 - Gesture-based selection supports up to 5 instruments and 5
-  songs/programs (one hand's finger count each) - currently exactly
-  fits (GONG, CHIME, GENDANG, GAMELAN, SARON = 5 instruments)
+  songs/programs (one hand's finger count each) - currently unused
+  (instrument sections hidden) since Architecture 4's setup doesn't
+  configure individual instruments on the PC side
 - Architecture 2 (`songs.py`'s compiled timelines) remains hidden and
   unvalidated beyond `opProgram_Stop` - each operation it uses
   (`opOutput_Step_Speed`, `opTimer_Wait`, etc.) would need the same
@@ -532,3 +564,72 @@ call directly from voice recognition's background thread.
 - True byte-level simultaneous start across many bricks isn't physically
   possible over one shared Bluetooth radio - ASYNC mode narrows the gap
   but can't eliminate it entirely
+- **Architecture 4's actual delay improvement is unverified.** The PC
+  side (connecting to the master brick, starting its program) is
+  proven working. Whether relaying through the master brick's own
+  Bluetooth actually reduces the delay problem - versus just moving
+  the same 7-device piconet limit onto a different device - depends
+  entirely on the master brick's own relay program, which lives outside
+  this repository and wasn't built or tested as part of this codebase.
+
+---
+
+## 17. Architecture 4 - `PROGRAM_ONLY_BRICKS` and the master-relay setup
+
+### The problem this responds to
+
+Even after Section 7's consolidation work (merging GONG+GENDANG,
+merging GAMELAN 1/2/3), noticeable command delay remained once several
+instrument bricks were connected directly to the PC at once. A
+different approach was proposed: have the PC talk to just **one**
+brick, and let that brick handle talking to the rest.
+
+### `PROGRAM_ONLY_BRICKS` in `config.py`
+
+```python
+PROGRAM_ONLY_BRICKS = [
+    "00:16:53:41:90:6e",  # master coordinator brick
+]
+```
+
+A brick listed here gets connected to (Step 1 of `ev3.py`'s
+`connect()`) but **no motor setup is attempted for it at all** - unlike
+`INSTRUMENTS`/`POSITIONED_INSTRUMENTS`, which always assume every
+listed motor location needs a `Motor` object created. This was a
+necessary small addition to `ev3.py`: previously, `connect()` only ever
+attempted to reach a brick if some instrument referenced it - there was
+no way to say "connect to this brick, but it has no motors."
+
+### How playing a program works, end to end
+
+1. The master brick has a program downloaded to it (built and
+   maintained separately, in EV3 Classroom or otherwise - **not** part
+   of this repository)
+2. `ev3_program_config.py`'s `PROGRAMS` dict maps a display name (e.g.
+   `"Rasa Sayang"`) to `{master_brick_mac: exact_file_path}` - same
+   mechanism Architecture 3 already used, just with one brick instead
+   of several
+3. Clicking the resulting Song Selection button calls
+   `play_downloaded_program()`, which calls `stop_all_motors()` first
+   (stops anything currently running - see Section 9's validated fix)
+   then `play_programs()` uploads/starts the file on the master brick
+4. **Everything after that point is the master brick's own
+   responsibility** - this Python codebase has no visibility into, and
+   makes no assumptions about, how the master brick's program talks to
+   the other 7 "servant" bricks. That's a separate program, built with
+   its own tools (likely EV3 Classroom's Messaging blocks, or a custom
+   on-brick program), maintained independently.
+
+### What this means for anyone continuing this work
+
+- The PC-side code doesn't need to change at all as the master brick's
+  relay program evolves - only the file path in `ev3_program_config.py`
+  needs updating to point at whichever version is currently downloaded
+- If `PROGRAM_ONLY_BRICKS`/this whole approach is abandoned later in
+  favor of going back to individual per-instrument connections, nothing
+  needs to be undone in `ev3.py` - just stop listing bricks in
+  `PROGRAM_ONLY_BRICKS`, and re-populate `INSTRUMENTS`/
+  `POSITIONED_INSTRUMENTS` and flip `SHOW_INSTRUMENT_SECTIONS` back to
+  `True` in `gui.py`
+- See `HANDOFF_NOTE.md` for the practical steps to plug in a real
+  relay program once it's built
