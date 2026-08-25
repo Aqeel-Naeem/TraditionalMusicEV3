@@ -915,4 +915,16 @@ class EV3App(ctk.CTk):
             self.current_stop_event.set()
         if self.ev3.connected:
             self.ev3.stop_all_motors()
+
+        # If a "Gamelan Stop" relay program is configured (see
+        # ev3_program_config.py), also trigger it - stop_all_motors()
+        # above only reaches the MASTER brick's own motors/program slot,
+        # it has no way to reach the servant bricks. The master's own
+        # Sender-stop program is what actually sends a "stop" message
+        # down to the servants, matching how its Sender-start program
+        # sends "start". Guarded with an `in` check so this does nothing
+        # (no error) if that program hasn't been set up yet.
+        if "Gamelan Stop" in PROGRAMS:
+            self.play_downloaded_program("Gamelan Stop")
+
         print("Stop requested.")
