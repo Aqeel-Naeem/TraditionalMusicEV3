@@ -32,6 +32,20 @@ COLOR_LOG_MUTED = "#71717a"     # unrecognized/minor log lines - present but qui
 # True whenever you want it visible again.
 SHOW_LEGACY_ARCHITECTURE_2 = False
 
+# Set to False to hide the instrument status grid and Instrument Control
+# section - relevant when no instruments are configured yet (e.g. testing
+# a motor-less master coordinator brick only). Flip back to True once
+# instruments are added to config.py again.
+SHOW_INSTRUMENT_SECTIONS = False
+
+# GAMELAN plays its notes low-to-high in sequence when triggered (button,
+# gesture, or voice), instead of firing all motors at once - this is the
+# demo instrument. It's a single combined instrument spanning all 3
+# physical units (see config.py) - the sequence chains through all 9
+# notes in order: unit 1, then unit 2, then unit 3.
+GAMELAN_INSTRUMENTS = {"GAMELAN"}
+GAMELAN_NOTE_DELAY = 0.4  # seconds between each note in the sequence
+
 
 class _StdoutTee:
     """
@@ -82,6 +96,12 @@ class EV3App(ctk.CTk):
         # and it automatically shows up consistently across the whole app.
         self.all_instruments = list(INSTRUMENTS.keys()) + list(POSITIONED_INSTRUMENTS.keys())
 
+        # Initialized here (not just inside create_status_grid) so
+        # refresh_instrument_status's polling loop is always safe to run,
+        # even when SHOW_INSTRUMENT_SECTIONS is False and the grid is
+        # never actually built - it just iterates an empty dict then.
+        self.instrument_status_labels = {}
+
         # mac -> instrument name(s), used to translate raw MAC addresses in
         # log output into friendly instrument names for the Activity Panel.
         self._mac_to_instruments = {}
@@ -100,16 +120,43 @@ class EV3App(ctk.CTk):
             on_instrument_finger_count=self.handle_instrument_gesture,
             on_song_finger_count=self.handle_song_gesture,
             on_stop=self.stop_song,
+            hint_text=(
+                "Right hand = instrument | Left hand = song | Fist = stop"
+                if self.all_instruments
+                else "Left hand = song | Fist = stop"
+            ),
         )
 
         self.create_widgets()  # <- this must come AFTER self.voice/self.gesture are created
         self.refresh_instrument_status()
         self.background_health_check()
         self._drain_log_queue()
+        self._sync_gesture_button()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_close(self):
+        """
+        Full safe shutdown, used by both the window's X button and the
+        voice "exit"/"quit"/"shutdown" commands. Order matters: motors
+        need to be told to stop WHILE still connected (stop_all_motors()
+        can't reach the brick after disconnect), so that happens first.
+        """
+        # Stop any in-progress song/Gamelan sequence and halt motors
+        # cleanly, before the connection goes away.
+        if self.current_stop_event is not None:
+            self.current_stop_event.set()
+        if self.ev3.connected:
+            self.ev3.stop_all_motors()
+
+        # Stop gesture/voice recognition so they exit their own loops
+        # cleanly (releasing the webcam properly) instead of being
+        # abruptly killed when the process ends.
+        if self.gesture._running:
+            self.gesture.stop()
+        if self.voice._listening:
+            self.voice.stop()
+
         if self.ev3.connected:
             self.ev3.disconnect()
         if isinstance(sys.stdout, _StdoutTee):
@@ -171,6 +218,52 @@ class EV3App(ctk.CTk):
 
         threading.Thread(target=_play_wrapper, daemon=True).start()
 
+    def play_instrument(self, instrument_name):
+        """
+        Central place instrument triggers go through, regardless of
+        whether they came from a button click, gesture, or voice command -
+        so all three input methods behave consistently.
+
+        For GAMELAN units specifically (the demo instrument), plays each
+        of its motors in sequence, lowest port to highest, instead of
+        firing them all at once - shows every motor responding instead of
+        one simultaneous clump. Every other instrument still just fires
+        normally via send_command().
+
+        Only GAMELAN participates in current_stop_event coordination here.
+        Manually triggering a DIFFERENT single instrument (Gong, Saron,
+        etc.) while GAMELAN's sequence is running does NOT stop it -
+        they're allowed to coexist, same as any two instruments playing
+        together normally. GAMELAN's sequence is only interrupted by:
+        selecting a different song/program, the Stop button, or a fist
+        gesture - things that mean "start a new performance," not a
+        one-off manual test of another instrument.
+        """
+        if instrument_name in GAMELAN_INSTRUMENTS:
+            if self.current_stop_event is not None:
+                self.current_stop_event.set()
+
+            my_stop_event = threading.Event()
+            self.current_stop_event = my_stop_event
+
+            threading.Thread(
+                target=self._play_gamelan_sequence,
+                args=(instrument_name, my_stop_event),
+                daemon=True,
+            ).start()
+        else:
+            self.ev3.send_command(instrument_name)
+
+    def _play_gamelan_sequence(self, instrument_name, stop_event):
+        num_keys = len(INSTRUMENTS.get(instrument_name, []))
+        print(f"🎹 {instrument_name.title()}: playing low to high ({num_keys} notes)")
+        for key in range(num_keys):
+            if stop_event.is_set():
+                print(f"🎹 {instrument_name.title()}: sequence stopped early")
+                return
+            self.ev3.send_command(instrument_name, key=key)
+            time.sleep(GAMELAN_NOTE_DELAY)
+
     def play_downloaded_program(self, program_name):
         """
         Triggers an EV3 Classroom program that's already been downloaded
@@ -182,6 +275,22 @@ class EV3App(ctk.CTk):
             print(f"No bricks configured for program '{program_name}' - "
                   "fill in ev3_program_config.py")
             return
+
+        # Signal anything else currently playing (e.g. a GAMELAN sequence)
+        # to stop, same coordination songs/instruments already use.
+        if self.current_stop_event is not None:
+            self.current_stop_event.set()
+
+        # IMPORTANT: a downloaded program runs independently ON the brick
+        # once started - it's not a Python-side loop, so current_stop_event
+        # alone does nothing to it. stop_all_motors() is what actually
+        # terminates a running on-brick program (see its docstring in
+        # ev3.py) - without this, switching songs would try to start a
+        # new program while the old one might still be running on the
+        # same brick.
+        if self.ev3.connected:
+            self.ev3.stop_all_motors()
+
         threading.Thread(
             target=play_programs, args=(self.ev3, brick_map), daemon=True
         ).start()
@@ -206,9 +315,10 @@ class EV3App(ctk.CTk):
         self.content_frame.pack(side="left", fill="both", expand=True)
 
         #Instrument status
-        status_grid_frame = ctk.CTkFrame(self.content_frame)
-        status_grid_frame.pack(padx=10, pady=12, fill="x")
-        self.create_status_grid(status_grid_frame)
+        if SHOW_INSTRUMENT_SECTIONS:
+            status_grid_frame = ctk.CTkFrame(self.content_frame)
+            status_grid_frame.pack(padx=10, pady=12, fill="x")
+            self.create_status_grid(status_grid_frame)
 
         # EV3 Section
         ev3_frame = ctk.CTkFrame(self.content_frame)
@@ -332,35 +442,36 @@ class EV3App(ctk.CTk):
         )
 
         # Instrument Control Section
-        instrument_frame = ctk.CTkFrame(self.content_frame)
-        instrument_frame.pack(padx=10, pady=12, fill="x")
+        if SHOW_INSTRUMENT_SECTIONS:
+            instrument_frame = ctk.CTkFrame(self.content_frame)
+            instrument_frame.pack(padx=10, pady=12, fill="x")
 
-        instrument_title = ctk.CTkLabel(
-            instrument_frame,
-            text="🥁 Instrument Control (calibration/testing)",
-            font=("Arial", 15),
-            text_color="#a1a1aa",
-        )
-        instrument_title.pack(padx=10, pady=10)
+            instrument_title = ctk.CTkLabel(
+                instrument_frame,
+                text="🥁 Instrument Control (calibration/testing)",
+                font=("Arial", 15),
+                text_color="#a1a1aa",
+            )
+            instrument_title.pack(padx=10, pady=10)
 
-        instrument_columns = 4
-        instruments = self.all_instruments
-        rows_needed = -(-len(instruments) // instrument_columns)  # ceil division
+            instrument_columns = 4
+            instruments = self.all_instruments
+            rows_needed = -(-len(instruments) // instrument_columns)  # ceil division
 
-        for r in range(rows_needed):
-            row_frame = ctk.CTkFrame(instrument_frame, fg_color="transparent")
-            row_frame.pack(pady=4)
-            chunk = instruments[r * instrument_columns:(r + 1) * instrument_columns]
-            for instrument_name in chunk:
-                btn = ctk.CTkButton(
-                    row_frame,
-                    text=instrument_name.title(),
-                    command=lambda name=instrument_name: self.ev3.send_command(name),
-                    fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
-                    width=120, height=28,
-                    font=("Arial", 12),
-                )
-                btn.pack(side="left", padx=6)
+            for r in range(rows_needed):
+                row_frame = ctk.CTkFrame(instrument_frame, fg_color="transparent")
+                row_frame.pack(pady=4)
+                chunk = instruments[r * instrument_columns:(r + 1) * instrument_columns]
+                for instrument_name in chunk:
+                    btn = ctk.CTkButton(
+                        row_frame,
+                        text=instrument_name.title(),
+                        command=lambda name=instrument_name: self.play_instrument(name),
+                        fg_color=COLOR_MUTED, hover_color=COLOR_MUTED_HOVER,
+                        width=120, height=28,
+                        font=("Arial", 12),
+                    )
+                    btn.pack(side="left", padx=6)
 
         # AI Section
         ai_frame = ctk.CTkFrame(self.content_frame)
@@ -671,6 +782,12 @@ class EV3App(ctk.CTk):
             "pause": self.stop_song,
             "start gesture": self.start_gesture_command,
             "stop gesture": self.stop_gesture_command,
+            "exit": self.voice_shutdown,
+            "quit": self.voice_shutdown,
+            "shut down": self.voice_shutdown,
+            "shutdown": self.voice_shutdown,
+            "close program": self.voice_shutdown,
+            "end program": self.voice_shutdown,
         }
 
         # Strip common filler words that don't help matching and can throw off scoring
@@ -702,7 +819,7 @@ class EV3App(ctk.CTk):
         if target.lower() in voice_actions:
             voice_actions[target.lower()]()
         elif target in self.all_instruments:
-            self.ev3.send_command(target)
+            self.play_instrument(target)
         else:
             self.play_downloaded_program(target)
 
@@ -722,6 +839,18 @@ class EV3App(ctk.CTk):
             text="Voice Recognition", fg_color=COLOR_AI
         ))
 
+    def voice_shutdown(self):
+        """
+        Safely closes the whole program by voice - reuses the exact same
+        on_close() the window's X button already calls (disconnects EV3,
+        restores stdout, destroys the window), just scheduled onto the
+        main GUI thread via self.after(0, ...) since this runs from
+        voice recognition's background thread, and self.destroy() isn't
+        safe to call directly from a non-main thread.
+        """
+        print("👋 Shutting down...")
+        self.after(0, self.on_close)
+
     def start_gesture_command(self):
         if not self.gesture._running:
             self.gesture.start()
@@ -740,8 +869,10 @@ class EV3App(ctk.CTk):
         index = count - 1
         if 0 <= index < len(self.all_instruments):
             instrument = self.all_instruments[index]
-            self.ev3.send_command(instrument)
+            self.play_instrument(instrument)
             print(f"Right hand {count} finger(s) -> {instrument}")
+        elif not self.all_instruments:
+            print("✋ No instruments configured right now")
 
     def handle_song_gesture(self, count):
         program_names = list(PROGRAMS.keys())
@@ -760,6 +891,24 @@ class EV3App(ctk.CTk):
         else:
             self.gesture.start()
             self.gesture_button.configure(text="Stop Gesture Recognition", fg_color="#ef4444")
+
+    def _sync_gesture_button(self):
+        """
+        Runs periodically on the main GUI thread. The gesture loop can end
+        on its own (pressing 'q', or closing the webcam window) without
+        going through toggle_gesture()/stop_gesture_command() - when that
+        happens, self.gesture._running becomes False internally, but the
+        button was never told to update. This polls and corrects that
+        mismatch, so the button always reflects what's actually running.
+        """
+        actually_running = self.gesture._running
+        button_says_running = self.gesture_button.cget("text") == "Stop Gesture Recognition"
+
+        if button_says_running and not actually_running:
+            self.gesture_button.configure(text="Gesture Recognition", fg_color=COLOR_AI)
+            print("Gesture recognition window closed - button synced")
+
+        self.after(500, self._sync_gesture_button)
 
     def stop_song(self):
         if self.current_stop_event is not None:

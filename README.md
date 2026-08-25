@@ -1,349 +1,240 @@
 # Traditional Music EV3 Controller
 
-This is an app that lets you control LEGO EV3 robots from your computer to
-play traditional musical instruments (like a gong, saron, and drum) -
-either by clicking buttons, playing a full song automatically, using your
-voice, or using hand gestures.
+An app that lets you control LEGO EV3 robots from your computer to play
+traditional musical instruments (gong, chime, gendang, gamelan, saron) -
+by clicking buttons, using your voice, or using hand gestures.
 
-This guide assumes you've never used VS Code or written code before, so it
-explains every step in detail.
+This guide assumes you've never used VS Code or written code before.
 
 ---
 
 ## Before you start: what you need
 
 - A Windows computer
-- One or more LEGO EV3 bricks (using their normal, original LEGO software -
-  do not install any special robot software on them)
+- LEGO EV3 bricks (using their normal, original LEGO software - do not
+  install any special robot software on them)
 - Motors plugged into the EV3 bricks
 - Bluetooth on your computer
 - A webcam (for gesture control) and a microphone (for voice control) -
-  both optional, only needed if you want to use those features
+  both optional
 
 ---
 
 ## Step 1: Install VS Code
-
-VS Code is the program you'll use to open and run this project.
-
 1. Go to https://code.visualstudio.com
-2. Click the big **Download** button for Windows
-3. Open the downloaded file and click through the installer (default
-   options are fine)
-
----
+2. Click **Download** for Windows, run the installer (default options fine)
 
 ## Step 2: Install Python
-
 1. Go to https://www.python.org/downloads/
-2. Click **Download Python** (get the latest version)
-3. Run the installer
-4. **Important:** on the first installer screen, check the box that says
-   **"Add python.exe to PATH"** before clicking Install
-
----
+2. Download and run the installer
+3. **Important:** check **"Add python.exe to PATH"** on the first screen
 
 ## Step 3: Download this project
+1. Open the project's GitHub page, click **Code > Download ZIP**
+2. Extract it somewhere you'll remember (e.g. Desktop)
 
-If you were given a link to this project on GitHub:
+## Step 4: Open it in VS Code
+**File > Open Folder**, select the extracted folder.
 
-1. Open the project's page in your web browser
-2. Click the green **Code** button
-3. Click **Download ZIP**
-4. Find the downloaded ZIP file (usually in your Downloads folder) and
-   right-click it, then choose **Extract All**
-5. Choose a location you'll remember (e.g. your Desktop) and click Extract
-
-You should now have a folder called something like `TraditionalMusicEV3`.
-
----
-
-## Step 4: Open the project in VS Code
-
-1. Open VS Code
-2. Click **File > Open Folder**
-3. Select the `TraditionalMusicEV3` folder you extracted
-4. Click **Select Folder**
-
-You should now see a list of files on the left side of VS Code (like
-`main.py`, `gui.py`, `config.py`, etc.)
-
----
-
-## Step 5: Open a terminal inside VS Code
-
-A terminal is where you type commands to set things up.
-
-1. In VS Code, click **Terminal** in the top menu bar
-2. Click **New Terminal**
-3. A panel will open at the bottom of the screen - this is where you'll
-   type the commands in the next steps
-
----
+## Step 5: Open a terminal
+**Terminal > New Terminal** in VS Code's top menu.
 
 ## Step 6: Set up a Python environment
-
-This creates a clean, separate space for this project's software so it
-doesn't interfere with anything else on your computer.
-
-In the terminal, type this and press Enter:
 ```
 python -m venv .venv
-```
-
-Then type this and press Enter:
-```
 .venv\Scripts\activate
 ```
-
-If you see an error mentioning "running scripts is disabled," type this
-and press Enter instead:
+If you see a "running scripts is disabled" error:
 ```
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
-Type `Y` and press Enter if it asks for confirmation, then try the
-`.venv\Scripts\activate` command again.
+then try activating again. You'll know it worked when you see `(.venv)`
+at the start of your terminal line.
 
-You'll know it worked if you see `(.venv)` appear at the start of the line
-in your terminal.
-
----
-
-## Step 7: Install the required software packages
-
-With `(.venv)` showing in your terminal, type this and press Enter:
+## Step 7: Install required packages
 ```
 pip install -r requirements.txt
 ```
-
-This reads a list of everything the project needs and installs it all
-automatically. It may take a minute or two.
-
-*(If you're setting up this project for the very first time and there's no
-`requirements.txt` file yet, type this instead:)*
+First time, no requirements.txt yet:
 ```
 pip install customtkinter ev3_dc SpeechRecognition pyaudio mediapipe==0.10.9 opencv-python
 ```
-*(If `pyaudio` gives an error during install, try this instead:)*
+If `pyaudio` fails:
 ```
 pip install pipwin
 pipwin install pyaudio
 ```
-*(Then, to create that list file for next time, type:)*
+Then create the file for next time:
 ```
 pip freeze > requirements.txt
 ```
 
 ---
 
-## Step 8: Connect your EV3 brick(s) to your computer via Bluetooth
+## Step 8: Connect your EV3 brick(s) via Bluetooth
 
-> **A note on EV3 Bluetooth reliability (from real experience building
-> this project):** EV3 Bluetooth connections on Windows can be
-> unpredictable - some laptops connect smoothly every time, others
-> struggle no matter what you try. In practice, when one EV3 brick was
-> being difficult, simply trying a *different* physical brick sometimes
-> solved it immediately, even with identical setup steps. This isn't a
-> guaranteed fix and the exact cause isn't fully understood, but it's
-> worth trying if you're stuck.
+> **A note on EV3 Bluetooth reliability:** it can be unpredictable on
+> Windows - some laptops connect smoothly, others struggle. If one brick
+> is being difficult, trying a *different* physical brick sometimes fixes
+> it immediately, for reasons we never fully pinned down. Also: the very
+> first time you click "Connect EV3" with a new brick, Windows sometimes
+> pops up its own "Add a device" prompt right then - just accept it and
+> enter `1234` if asked for a PIN. This only needs to happen once per
+> brick per computer.
 >
-> Also, in testing, the very first time you click **Connect EV3** in the
-> app (with a brick that hasn't been paired to that computer before),
-> Windows sometimes automatically shows an "Add a device" pop-up right
-> at that moment - if that happens, just accept it and enter `1234` if
-> asked for a PIN. This has only needed to happen once per brick per
-> computer; after that, it connects normally through the app.
+> **A hard limit worth knowing:** classic Bluetooth can only actively
+> connect to 7 devices at once from one computer (a real protocol limit,
+> not a setting). If you have many bricks, consolidating instruments onto
+> shared bricks (see Step 10) helps avoid ever hitting that ceiling.
 
-Do this once for each EV3 brick you'll use.
-
-1. On the EV3 brick itself, use its buttons to go to **Settings**
-   (looks like a wrench)
-2. Go to **Bluetooth**
-3. Turn Bluetooth **ON**
-4. Also turn on **Visible** (sometimes called "Visibility")
-5. On your computer, click the **Start Menu > Settings > Bluetooth & devices**
-6. Click **Add device > Bluetooth**
-7. Your EV3 should appear in the list (it may be named something like
-   "EV3" or similar) - click it
-8. On the EV3's screen, it will ask "Connect to this device?" - select **Yes**
-9. On your computer, if it asks for a PIN, type **1234**. If it instead
-   shows a screen with a number and just asks you to click Connect (with
-   no PIN box), that's normal too - just click **Connect**
-
-Repeat this for every EV3 brick you're using.
-
----
+For each brick:
+1. On the EV3: **Settings > Bluetooth**, turn ON, enable **Visible**
+2. On Windows: **Settings > Bluetooth & devices > Add device > Bluetooth**
+3. Click the EV3 when it appears, accept on the brick (**Yes**)
+4. If asked for a PIN, type **1234**; if it just shows a number with a
+   Connect button (no PIN box), that's normal too - just click Connect
 
 ## Step 9: Find each EV3's ID (MAC address)
-
-You need this so the app knows which brick is which.
-
-1. On the EV3 brick, go to **Settings > Brick Info**
-2. Look for **ID** - write down the number shown, e.g. `001653437F21`
-3. Add colons every 2 characters so it looks like this:
-   `00:16:53:43:7F:21`
-
-Do this for every brick and keep a note of which ID belongs to which brick.
-
----
+**Settings > Brick Info** on the brick, look for **ID**, e.g.
+`001653437F21` - add colons every 2 characters: `00:16:53:43:7F:21`.
 
 ## Step 10: Tell the app which instrument uses which brick
 
-1. In VS Code's file list (left side), click on **config.py** to open it
-2. You'll see something like this:
-
+Open `config.py`. Simple instruments (one motor, or a few motors that
+fire together) go in `INSTRUMENTS`:
 ```python
 INSTRUMENTS = {
     "GONG": [
         {"mac": "00:16:53:46:be:aa", "port": "A"},
     ],
-    "SARON": [
-        {"mac": "00:16:53:41:95:2e", "port": "A"},
-    ],
-    "DRUM": [
-        {"mac": "00:16:53:43:d6:4a", "port": "A"},
-    ],
 }
 ```
+**An instrument can span multiple bricks or share a brick with another
+instrument** - just list every `{mac, port}` it needs. Two instruments
+can even sit on the *same* brick, using different ports - the app
+automatically shares one Bluetooth connection per unique brick, no
+matter how many instruments use it.
 
-3. Replace each `"mac"` value with the real ID you noted down in Step 9
-   for that instrument's brick
-4. The `"port"` value should match which port (A, B, C, or D) the motor
-   is physically plugged into on that brick
-5. Save the file (**Ctrl + S**)
-
-**If one instrument has more than one motor** (e.g. a big instrument with
-motors on both sides), just add another line inside its brackets, for example:
-```python
-"SARON": [
-    {"mac": "00:16:53:41:95:2e", "port": "A"},
-    {"mac": "00:16:53:41:95:2e", "port": "C"},
-],
-```
-
----
+Complex instruments with a "controller" motor (positions to an angle)
+and a "hitter" motor (strikes) go in `POSITIONED_INSTRUMENTS` instead -
+see `DOCUMENTATION.md` for the full explanation, since this needs some
+physical calibration steps.
 
 ## Step 11: Run the app
-
-In the terminal (making sure it still shows `(.venv)` at the start), type:
 ```
 python main.py
 ```
-
-A window should open showing the app.
 
 ---
 
 ## Step 12: Using the app
 
-- **Connect EV3** - connects to all your bricks
-- **Disconnect EV3** - disconnects everything
-- **Check Battery** - shows each brick's battery level (check this before
-  every use!)
-- The colored list shows which instruments are currently connected
-  (green = working, red = not connected)
-- **Song Selection buttons** - plays a full song automatically
-- **Instrument Control buttons** - manually plays one instrument, useful
-  for testing
+- **Connect EV3 / Disconnect EV3 / Check Battery** - self-explanatory;
+  check battery before every use, low battery can cause odd behavior
+- **Status grid** (top) - green = instrument connected, red = not
+- **Activity Panel** (left side) - shows everything happening in plain
+  language: connections, commands sent, voice/gesture events, errors -
+  color-coded, with timestamps
+- **Song Selection** - your actual songs/programs, downloaded to the EV3
+  bricks directly and triggered by name (see Step 13)
+- **Instrument Control** - manual single-instrument test buttons, for
+  calibration/testing, not really meant for the actual performance
+- **Test Songs (Architecture 2)** - hidden by default (see
+  `DOCUMENTATION.md`), an older approach kept for future development
 
----
+## Step 13: Setting up songs (the current approach)
 
-## Step 13: Using voice and gesture control (optional)
+Songs are built as small programs in **EV3 Classroom** (LEGO's own
+official app), downloaded directly onto each brick, and triggered by
+name from this app - not written as Python code. This is different from
+how it worked earlier in development; see `DOCUMENTATION.md`'s
+Architecture History section for why.
 
-These are extra ways to control the app besides clicking buttons.
+1. Build your song's motor timing as a program in EV3 Classroom, one
+   program per brick that needs to play something for that song
+2. Download each program to its brick
+3. Find the program's exact file path with:
+   ```
+   python test/list_ev3_files.py <brick_mac>
+   ```
+   then again with a folder path shown in the output, to see the actual
+   file inside. **Names are case-sensitive** - always confirm the real
+   path this way rather than guessing.
+4. Add an entry to `ev3_program_config.py`'s `PROGRAMS` dict:
+   ```python
+   PROGRAMS = {
+       "Your Song Name": {
+           "<brick mac>": "<exact remote .rbf path>",
+           "<another brick mac>": "<its path>",
+       },
+   }
+   ```
+5. Restart the app - a button for your song appears automatically
+
+## Step 14: Using voice and gesture control
 
 ### Voice recognition
+1. Click **Voice Recognition** (button turns red while listening; click
+   again, or say "EV3, stop listening," to turn it off)
+2. Say something close to **"EV3"** followed by your command - e.g.
+   "Hey EV3, play gamelan" or just "EV3, play gamelan." Words like "Hey"
+   or "please" are just natural phrasing, not actually required.
+3. Needs an internet connection.
 
-1. Click **Voice Recognition** in the app (the button turns red and says
-   "Stop Voice Recognition" while it's listening - click it again, or
-   say "EV3, stop listening," to turn it off).
-2. Say a word close to **"EV3"** followed by your command, e.g.
-   "Hey EV3, play gong" or "EV3, play drum."
-3. Requires an internet connection to work.
+**Available commands:** any instrument name, any song name, "connect",
+"disconnect", "battery", "stop"/"stop song"/"pause", "start gesture",
+"stop gesture", "exit"/"quit"/"shutdown" (safely closes the whole app).
 
-**Note:** you only need to say something close to "EV3" plus your
-command - words like "Hey" or "please" are just for natural phrasing and
-aren't actually required by the app. "EV3 drum" works exactly the same
-as "Hey EV3, please play the drum."
+**Honest limitation:** voice recognition is not perfectly reliable,
+especially for non-English words. Gesture control is more consistent -
+treat voice as a backup/demo feature.
 
-**Voice commands you can use:**
-- Any instrument name (e.g. "gong", "saron", "drum")
-- Any song name (e.g. "rasa sayang", "test motors")
-- "connect" - connects to all EV3 bricks
-- "disconnect" - disconnects all EV3 bricks
-- "battery" or "check battery" - checks battery levels
-- "stop song" or "stop music" - stops whatever song is currently playing
-- "start gesture" - turns on gesture recognition
-- "stop gesture" - turns off gesture recognition
-- "stop listening" or "stop voice" - turns off voice recognition
-
-**Note on response delay:** since voice commands are matched using
-"fuzzy matching" (finding the closest known word to what was heard),
-there's a small delay between speaking and the action happening -
-usually well under a second, but noticeable. This is normal, not a bug.
-
-**If you're setting this up on a new computer**, voice recognition may
-not work correctly until you find the right microphone for that
-computer. See `DOCUMENTATION.md` (Section 14) for how to do this using
-the included `test_mic.py` script.
-
-Honest warning: voice recognition is not perfectly reliable,
-especially for non-English song names. It sometimes mishears words.
-Gesture recognition (below) tends to work more consistently - use voice
-mainly as a backup or demo feature, not something to depend on entirely.
+**Setting up on a new computer:** the microphone index is specific to
+the machine it was configured on. Run `test_mic.py` to find the correct
+one for a new computer, then update `MIC_INDEX` in `ai/voice.py`.
 
 ### Gesture recognition
+1. Click **Gesture Recognition** - a webcam window opens (closeable by
+   pressing **Q** or clicking its **X** button - both work correctly)
+2. **Right hand** finger count (1-5) selects an instrument directly
+3. **Left hand** finger count (1-5) selects and plays a song/program
+4. **Fist** (either hand) stops whatever's currently playing
+5. Playing a different single instrument manually does **not** stop an
+   in-progress instrument sequence (like Gamelan's note run) - only
+   selecting a new song, the Stop button, or a fist gesture does
 
-1. Click **Gesture Recognition** (the button turns red and says "Stop
-   Gesture Recognition" while it's active - click it again, or say
-   "EV3, stop gesture," to turn it off) - a webcam window will open.
-2. Hold up fingers on your **right hand** to select an instrument
-   (1 finger = 1st instrument, 2 fingers = 2nd, and so on, matching the
-   order in `config.py`).
-3. Hold up fingers on your **left hand** to select and play a song
-   (1 finger = 1st song, 2 fingers = 2nd, and so on).
-4. Make a **fist** with either hand to stop whatever song is playing.
-5. Press **Q** with the webcam window focused to close the window (the
-   app's Gesture Recognition button won't automatically update if you
-   close it this way - use the button or a voice command instead for a
-   cleaner stop).
-
-If the webcam window doesn't appear but the camera light turns on, close
-any other program that might be using your webcam (Zoom, Teams, browser
-tabs with camera access) and try again.
-
-Gesture recognition works best with decent, consistent lighting - very
-dim or uneven lighting can make hand tracking less reliable.
+Works best with decent, consistent lighting.
 
 ---
 
 ## Things to watch out for
 
-- **Only connect your EV3 bricks to Bluetooth using their normal LEGO
-  settings.** Don't install any special software on them.
-- **Check the battery before every use.** A low battery can cause the
-  connection to behave strangely.
-- **If reconnecting fails right after disconnecting**, wait a few seconds
-  and try again - this is a normal EV3 quirk, not a mistake on your part.
-- **If Bluetooth pairing keeps failing**, go to Windows Settings >
-  Bluetooth & devices, remove the EV3 from the list, then pair it again
-  from scratch. If it still won't cooperate, try a different physical
-  brick if you have one available (see the note in Step 8).
-- **Keep your EV3 bricks reasonably close to your computer.** Bluetooth
-  range is limited, especially with walls or other obstacles in the way.
-- **Voice and gesture recognition need their own hardware access.** Make
-  sure no other app is using your microphone or webcam at the same time.
-
----
+- Only connect EV3 bricks via their normal LEGO settings - no special
+  software on the bricks themselves
+- Check battery before every use
+- If reconnecting fails right after disconnecting, wait a few seconds -
+  normal EV3 quirk
+- If Bluetooth pairing keeps failing, remove the device in Windows
+  Bluetooth settings and pair again from scratch; try a different
+  physical brick if available
+- Keep bricks reasonably close to your computer - Bluetooth range is
+  limited
+- Voice and gesture need their own hardware access - make sure nothing
+  else is using your mic/webcam at the same time
+- Closing the app (X button, or saying "EV3, exit") safely stops any
+  playing song, halts all motors, stops gesture/voice, and disconnects
+  everything in the right order before actually closing
 
 ## If something isn't working
 
 | Problem | What to try |
 |---|---|
-| "No EV3 device found" when reconnecting | Wait a few seconds after disconnecting before clicking Connect again |
-| App freezes when checking battery | A brick may have disconnected - try reconnecting all bricks |
-| Bluetooth pairing keeps failing | Remove the device in Windows Bluetooth settings, then pair again from scratch. Trying a different physical brick sometimes helps too |
-| Motor doesn't move even though it says "Connected" | Double-check the port letter in `config.py` matches where the motor is actually plugged in |
-| Gesture window doesn't open, but webcam light turns on | Close other apps using the webcam (Zoom, Teams, browser camera tabs), then try again |
-| Voice recognition mishears commands often | This is a known limitation, especially for non-English song names - use gesture recognition instead for reliable control |
-| Voice recognition doesn't seem to hear anything at all | You may be on a new computer - the microphone setting needs to be updated for this specific machine, see `DOCUMENTATION.md` Section 14 |
+| "No EV3 device found" when reconnecting | Wait a few seconds, try again |
+| App freezes when checking battery | A brick may have disconnected - reconnect all |
+| Bluetooth pairing keeps failing | Remove and re-pair from scratch; try a different brick |
+| Motor doesn't move despite "Connected" | Double-check the port letter in `config.py` |
+| Gesture window doesn't open, webcam light is on | Close other apps using the webcam |
+| Voice mishears commands often | Known limitation, especially non-English words - use gesture instead |
+| Voice hears nothing at all | New computer - update `MIC_INDEX` in `ai/voice.py`, see Step 14 |
+| A downloaded program's path fails | Re-confirm the exact case-sensitive path with `list_ev3_files.py` |
+| Connecting many bricks feels laggy | You may be near the 7-device Bluetooth limit - consolidate instruments onto shared bricks |

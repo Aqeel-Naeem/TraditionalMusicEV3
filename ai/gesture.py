@@ -6,6 +6,8 @@ import mediapipe as mp
 FINGER_TIPS = [4, 8, 12, 16, 20]
 FINGER_PIPS = [3, 6, 10, 14, 18]
 
+WINDOW_NAME = "Gesture Control - press Q or click X to close"
+
 
 class GestureController:
     """
@@ -31,7 +33,17 @@ class GestureController:
     block the CustomTkinter GUI thread.
     """
 
-    def __init__(self, on_instrument_finger_count=None, on_song_finger_count=None, on_stop=None):
+    def __init__(self, on_instrument_finger_count=None, on_song_finger_count=None, on_stop=None,
+                 hint_text=None):
+        """
+        hint_text: the on-screen instruction line shown in the webcam
+        window. Pass this explicitly (e.g. from gui.py, based on whether
+        any instruments are currently configured) rather than relying on
+        a hardcoded default, so it can't drift out of sync with reality -
+        e.g. showing "Right hand = instrument" when zero instruments are
+        actually configured would be misleading.
+        """
+        self.hint_text = hint_text or "Left hand = song | Fist = stop"
         self.on_instrument_finger_count = on_instrument_finger_count
         self.on_song_finger_count = on_song_finger_count
         self.on_stop = on_stop
@@ -146,11 +158,20 @@ class GestureController:
                 self._right_candidate = None
                 self._right_candidate_count = 0
 
-            cv2.putText(frame, "Right hand = instrument | Left hand = song | Fist = stop",
+            cv2.putText(frame, self.hint_text,
                         (10, frame.shape[0] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-            cv2.imshow("Gesture Control - press Q to close", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            cv2.imshow(WINDOW_NAME, frame)
+
+            key_pressed = cv2.waitKey(1) & 0xFF
+            # OpenCV's native window X button doesn't stop this loop on its
+            # own - clicking it just hides/destroys the window handle while
+            # cv2.imshow() keeps getting called on it. WND_PROP_VISIBLE
+            # drops below 1 once that's happened, so checking it each frame
+            # catches an X-button close the same way 'q' is caught.
+            window_closed = cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1
+
+            if key_pressed == ord('q') or window_closed:
                 break
 
         cap.release()

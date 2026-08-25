@@ -2,7 +2,7 @@ import queue
 import threading
 import time
 import ev3_dc as ev3
-from config import INSTRUMENTS, POSITIONED_INSTRUMENTS
+from config import INSTRUMENTS, POSITIONED_INSTRUMENTS, PROGRAM_ONLY_BRICKS
 
 PORT_MAP = {
     "A": ev3.PORT_A,
@@ -46,6 +46,10 @@ class EV3:
             for location in [pair["controller"]] + pair["hitter"]
             if location.get("mac")
         )
+        # Bricks with no motors at all - connected purely so a downloaded
+        # program can be started on them (e.g. a "master" brick that
+        # relays to other bricks on its own, via its own program).
+        unique_macs.update(PROGRAM_ONLY_BRICKS)
 
         for mac in unique_macs:
             try:

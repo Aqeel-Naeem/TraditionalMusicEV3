@@ -27,14 +27,26 @@ PROGRAMS = {
 
     # Example of a full-ensemble song using all 7 bricks - fill in each
     # path as you confirm it with list_ev3_files.py:
-    # "Rasa Sayang": {
-    #     "00:16:53:46:be:aa": "/home/root/lms2012/prjs/RasaSayangGongChime/RasaSayangGongChime.rbf",
-    #     "00:16:53:43:d6:4a": "/home/root/lms2012/prjs/RasaSayangGendang/RasaSayangGendang.rbf",
-    #     "00:16:53:41:90:6e": "/home/root/lms2012/prjs/RasaSayangGamelan1/RasaSayangGamelan1.rbf",
-    #     "00:16:53:4b:b2:e0": "/home/root/lms2012/prjs/RasaSayangGamelan2/RasaSayangGamelan2.rbf",
-    #     "00:16:53:48:9b:39": "/home/root/lms2012/prjs/RasaSayangGamelan3/RasaSayangGamelan3.rbf",
-    #     "00:16:53:41:95:2e": "/home/root/lms2012/prjs/RasaSayangSaronLeft/RasaSayangSaronLeft.rbf",
-    #     "00:16:53:4d:46:72": "/home/root/lms2012/prjs/RasaSayangSaronRight/RasaSayangSaronRight.rbf",
+    "Rasa Sayang": {
+        # "00:16:53:46:be:aa": "/home/root/lms2012/prjs/RasaSayangGongChime/RasaSayangGongChime.rbf",
+        # "00:16:53:43:d6:4a": "/home/root/lms2012/prjs/RasaSayangGendang/RasaSayangGendang.rbf",
+        "00:16:53:41:90:6e": "/home/root/lms2012/prjs/RasaSayangGamelan_1/RasaSayangGamelan_1.rbf",
+        # "00:16:53:4b:b2:e0": "/home/root/lms2012/prjs/RasaSayangGamelan_2/RasaSayangGamelan_2.rbf",
+        # "00:16:53:48:9b:39": "/home/root/lms2012/prjs/RasaSayangGamelan_3/RasaSayangGamelan_3.rbf",
+        # "00:16:53:41:95:2e": "/home/root/lms2012/prjs/RasaSayangSaronLeft/RasaSayangSaronLeft.rbf",
+        # "00:16:53:4d:46:72": "/home/root/lms2012/prjs/RasaSayangSaronRight/RasaSayangSaronRight.rbf",
+    },
+
+    # "Beep": {
+    #     "00:16:53:46:be:aa": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:3d:cc:4c": "/home/root/lms2012/prjs/Beep/Beep.rbf", #gong
+    #     "00:16:53:4f:f7:b7": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:43:d6:4a": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:41:90:6e": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:4b:b2:e0": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:48:9b:39": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:41:95:2e": "/home/root/lms2012/prjs/Beep/Beep.rbf",
+    #     "00:16:53:4d:46:72": "/home/root/lms2012/prjs/Beep/Beep.rbf",
     # },
 
     # A song using only a subset of instruments works the same way -
