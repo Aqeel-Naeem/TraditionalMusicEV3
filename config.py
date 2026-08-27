@@ -58,7 +58,7 @@ INSTRUMENTS = {
 # INSTRUMENTS/POSITIONED_INSTRUMENTS should reference them, and no
 # {"mac": ..., "port": ...} entry is needed since there's no motor.
 PROGRAM_ONLY_BRICKS = [
-    "00:16:53:41:90:6e",  # master coordinator brick (Rasa Sayang relay) - GAMELAN 1
+    {"mac": "00:16:53:41:90:6e", "protocol": "usb"},  # master coordinator brick (Rasa Sayang relay)
 ]
 
 

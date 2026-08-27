@@ -23,6 +23,14 @@ class EV3:
 
     def __init__(self):
         self.connected = False
+        # Set True whenever a per-brick connect attempt fails with
+        # ev3_dc's known "already connected" USB bug (see connect()
+        # below) - gui.py checks this directly to trigger an automatic
+        # app restart, since the plain exception message that reaches
+        # the caller gets rewrapped into a generic summary and no
+        # longer contains this specific text by the time it's caught
+        # further up.
+        self.stuck_connection_detected = False
         self._bricks = {}        # mac -> ev3.EV3 connection object (one per unique brick)
         self._brick_status = {}  # mac -> True/False (connected or not)
         self._motors = {}        # instrument name -> list of (motor, mac) tuples
@@ -36,6 +44,7 @@ class EV3:
     def connect(self):
         print("Connecting to EV3 bricks...")
         any_success = False
+        self.stuck_connection_detected = False
 
         # Step 1: connect to each unique brick MAC only once
         unique_macs = {loc["mac"] for locations in INSTRUMENTS.values() for loc in locations}
@@ -49,18 +58,38 @@ class EV3:
         # Bricks with no motors at all - connected purely so a downloaded
         # program can be started on them (e.g. a "master" brick that
         # relays to other bricks on its own, via its own program).
-        unique_macs.update(PROGRAM_ONLY_BRICKS)
+        # Each entry can be a plain MAC string (defaults to Bluetooth),
+        # or {"mac": ..., "protocol": "usb"} to override the connection
+        # type for that specific brick - e.g. a master brick wired via
+        # USB so its Bluetooth radio stays free to act as master to its
+        # own servant bricks (a brick's Bluetooth radio can't be BOTH a
+        # slave to the PC and a master to other bricks at the same time).
+        program_only_macs = set()
+        program_only_protocols = {}  # mac -> "usb" or "bluetooth"
+        for entry in PROGRAM_ONLY_BRICKS:
+            if isinstance(entry, dict):
+                mac = entry["mac"]
+                program_only_protocols[mac] = entry.get("protocol", "bluetooth")
+            else:
+                mac = entry
+                program_only_protocols[mac] = "bluetooth"
+            program_only_macs.add(mac)
+        unique_macs.update(program_only_macs)
 
         for mac in unique_macs:
             try:
-                brick = ev3.EV3(protocol=ev3.BLUETOOTH, host=mac)
+                protocol_name = program_only_protocols.get(mac, "bluetooth")
+                protocol = ev3.USB if protocol_name == "usb" else ev3.BLUETOOTH
+                brick = ev3.EV3(protocol=protocol, host=mac)
                 self._bricks[mac] = brick
                 self._brick_status[mac] = True
                 any_success = True
-                print(f"  Brick {mac}: connected")
+                print(f"  Brick {mac}: connected ({protocol_name})")
             except Exception as e:
                 self._brick_status[mac] = False
                 print(f"  Brick {mac}: FAILED to connect - {e}")
+                if "already connected" in str(e):
+                    self.stuck_connection_detected = True
 
         # Start one persistent worker thread per connected brick for real-time manual commands.
         for mac in self._bricks:
